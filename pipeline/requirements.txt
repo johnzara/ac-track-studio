@@ -1,0 +1,15 @@
+# The pipeline's Python packages (pipeline/.venv, Python 3.14):
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+glcontext==3.0.0
+moderngl==5.12.0
+msgpack==1.2.3
+numpy==2.5.3
+pillow==12.3.0
+pyogrio==0.13.0
+pyproj==3.8.0
+rasterio==1.5.2
+requests==2.34.2
+scipy==1.18.1
+shapely==2.1.2
+trimesh==5.1.1
+zstandard==0.25.0

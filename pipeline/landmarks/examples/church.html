@@ -1,0 +1,504 @@
+<title>Village church</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;0,700;1,500&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed 3D stage, one stone-card panel floating top-left (bottom sheet on phones) */
+:root {
+  --bg: #e9e4da;
+  --panel: rgba(250, 247, 241, 0.92);
+  --ink: #2b2620;
+  --muted: #6e655a;
+  --line: rgba(60, 48, 32, 0.16);
+  --ochre: #b8741f;
+  --ochre-ink: #ffffff;
+  --sky-top: #8fb6dd;
+  --sky-bottom: #e8eef3;
+  --f-display: "Alegreya", Georgia, "Times New Roman", serif;
+  --f-body: "Alegreya Sans", "Helvetica Neue", Arial, sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171c; --panel: rgba(28, 30, 36, 0.9); --ink: #ece6da; --muted: #a49b8d;
+    --line: rgba(236, 230, 218, 0.14); --ochre: #e0a04a; --ochre-ink: #1a1408;
+    --sky-top: #1b2a44; --sky-bottom: #5d6a80; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171c; --panel: rgba(28, 30, 36, 0.9); --ink: #ece6da; --muted: #a49b8d;
+  --line: rgba(236, 230, 218, 0.14); --ochre: #e0a04a; --ochre-ink: #1a1408;
+  --sky-top: #1b2a44; --sky-bottom: #5d6a80; color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.panel {
+  position: fixed; left: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  width: 300px; max-width: calc(100% - 32px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  padding: 16px 18px; display: grid; gap: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+}
+.eyebrow { font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 25px; line-height: 1.1; margin: 4px 0 0; text-wrap: balance; }
+.byline { color: var(--muted); font-size: 14px; margin-top: 4px; line-height: 1.4; }
+.specs { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font-size: 13.5px; margin: 0; }
+.specs dt { color: var(--muted); }
+.specs dd { margin: 0; font-family: var(--f-data); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.group-label { font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+.group-label output { font-family: var(--f-data); letter-spacing: 0; text-transform: none; color: var(--ink); }
+.views { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+button {
+  font: inherit; font-size: 13.5px; color: var(--ink); background: transparent;
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 4px; cursor: pointer;
+}
+button:hover { border-color: var(--ochre); }
+button[aria-pressed="true"] { background: var(--ochre); color: var(--ochre-ink); border-color: var(--ochre); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
+input[type="range"] { width: 100%; accent-color: var(--ochre); margin: 0; }
+.row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.row button { padding: 6px 10px; }
+.note { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin: 0; border-top: 1px solid var(--line); padding-top: 10px; }
+.compass {
+  position: fixed; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  width: 44px; height: 44px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line);
+  display: grid; place-items: center; font-family: var(--f-data); font-size: 11px;
+}
+.compass .needle { width: 44px; height: 44px; position: absolute; inset: 0; }
+.compass .n { position: absolute; top: 3px; left: 50%; transform: translateX(-50%); color: var(--ochre); font-weight: 500; }
+.hint { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); font-size: 12.5px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.details-toggle { display: none; }
+
+@media (max-width: 640px) {
+  .panel { top: auto; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; width: auto; max-width: none; padding: 12px 14px; gap: 10px; }
+  h1 { font-size: 21px; }
+  .hint { display: none; }
+  .specs, .note { display: none; }
+  .panel.open .specs { display: grid; }
+  .panel.open .note { display: block; }
+  .details-toggle { display: inline-block; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="stage" aria-label="Interactive 3D model of a village church"></div>
+
+<aside class="panel" id="panel">
+  <div>
+    <div class="eyebrow">Example landmark</div>
+    <h1>Village church</h1>
+    <div class="byline">Neo-Gothic parish church by Vittorio Barichella, built 1894–1904</div>
+  </div>
+  <dl class="specs">
+    <dt>Facade width</dt><dd>≈ 16.5 m</dd>
+    <dt>Gable apex</dt><dd>≈ 15.5 m</dd>
+    <dt>Length to apse</dt><dd>≈ 25.5 m</dd>
+    <dt>Plan</dt><dd>Greek cross</dd>
+    <dt>Facade faces</dt><dd>south-east</dd>
+  </dl>
+  <div>
+    <div class="group-label">View</div>
+    <div class="views" role="group" aria-label="Camera views">
+      <button id="v-front" data-view="front" aria-pressed="true">Facade</button>
+      <button id="v-aerial" data-view="aerial" aria-pressed="false">Aerial</button>
+      <button id="v-side" data-view="side" aria-pressed="false">Side</button>
+      <button id="v-rear" data-view="rear" aria-pressed="false">Rear</button>
+    </div>
+  </div>
+  <div>
+    <label class="group-label" for="sun">Sun, early October <output id="sunOut">10:30</output></label>
+    <input type="range" id="sun" min="6.75" max="17.25" step="0.25" value="10.5">
+  </div>
+  <div class="row">
+    <button id="spin" aria-pressed="false">Rotate</button>
+    <button id="details" class="details-toggle" aria-expanded="false">Details</button>
+  </div>
+  <p class="note">Approximate reconstruction from photos and satellite imagery. Proportions are estimated, the body behind the facade is simplified, and the old 15th-century bell tower is not included.</p>
+</aside>
+
+<div class="compass" aria-hidden="true"><svg class="needle" id="needle" viewBox="0 0 44 44"><path d="M22 9 L25 22 L22 35 L19 22 Z" fill="currentColor" opacity="0.25"/><path d="M22 9 L25 22 L19 22 Z" fill="var(--ochre)"/></svg><span class="n" id="nLabel"></span></div>
+<div class="hint">Drag to orbit · scroll or pinch to zoom</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  THREE.ColorManagement.legacyMode = false;
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 600);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI * 0.495;
+  controls.minDistance = 8;
+  controls.maxDistance = 140;
+  controls.autoRotateSpeed = 0.6;
+
+  // ---------- sky from theme tokens ----------
+  function paintSky() {
+    const cs = getComputedStyle(document.documentElement);
+    const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+    const g = c.getContext('2d'); const grd = g.createLinearGradient(0, 0, 0, 256);
+    grd.addColorStop(0, cs.getPropertyValue('--sky-top').trim());
+    grd.addColorStop(1, cs.getPropertyValue('--sky-bottom').trim());
+    g.fillStyle = grd; g.fillRect(0, 0, 4, 256);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    scene.background = t;
+  }
+  paintSky();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', paintSky);
+  new MutationObserver(paintSky).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---------- materials ----------
+  const lin = hex => { const c = new THREE.Color(hex); return `vec3(${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)})`; };
+  function striped() {
+    const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
+    m.onBeforeCompile = s => {
+      s.vertexShader = s.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vWY;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWY = (modelMatrix * vec4(transformed, 1.0)).y;');
+      s.fragmentShader = s.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vWY;')
+        .replace('vec4 diffuseColor = vec4( diffuse, opacity );',
+          `float band = step(0.5, fract((vWY - 0.9) / 1.0));
+           vec3 sc = mix(${lin('#cf8430')}, ${lin('#e8dcbf')}, band);
+           vec4 diffuseColor = vec4(sc, opacity);`);
+    };
+    return m;
+  }
+  function doorTexture() {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 512;
+    const g = c.getContext('2d');
+    g.fillStyle = '#6b4a3a'; g.fillRect(0, 0, 256, 512);
+    g.strokeStyle = '#c9b29a'; g.lineWidth = 3;
+    for (let i = -16; i < 24; i++) {
+      g.beginPath(); g.moveTo(i * 32, 0); g.lineTo(i * 32 + 512, 512); g.stroke();
+      g.beginPath(); g.moveTo(i * 32, 0); g.lineTo(i * 32 - 512, 512); g.stroke();
+    }
+    g.fillStyle = '#3d2a20'; g.fillRect(126, 0, 4, 512);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+  }
+  const M = {
+    wall: striped(),
+    stone: new THREE.MeshStandardMaterial({ color: '#e2dccd', roughness: 0.8 }),
+    trim: new THREE.MeshStandardMaterial({ color: '#d9cfbc', roughness: 0.85 }),
+    roof: new THREE.MeshStandardMaterial({ color: '#55585d', roughness: 0.7 }),
+    glass: new THREE.MeshStandardMaterial({ color: '#27313b', roughness: 0.25, metalness: 0.3 }),
+    door: new THREE.MeshStandardMaterial({ map: doorTexture(), roughness: 0.7 }),
+    tymp: new THREE.MeshStandardMaterial({ color: '#c9bba3', roughness: 0.9 }),
+    sagrato: new THREE.MeshStandardMaterial({ color: '#d8d2c6', roughness: 0.95 }),
+    cobble: new THREE.MeshStandardMaterial({ color: '#8c8780', roughness: 1 }),
+    grass: new THREE.MeshStandardMaterial({ color: '#7d8c5a', roughness: 1 }),
+    copper: new THREE.MeshStandardMaterial({ color: '#4d6a5f', roughness: 0.6 }),
+  };
+
+  Object.entries(M).forEach(([k, m]) => { m.name = k; });
+  const church = new THREE.Group(); scene.add(church);
+  window.LANDMARK = church;  // export hook (see LANDMARKS.md)
+  const add = (geo, mat, x = 0, y = 0, z = 0, parent = church) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m;
+  };
+  const box = (w, h, d, mat, x, yBase, z, parent) => add(new THREE.BoxGeometry(w, h, d), mat, x, yBase + h / 2, z, parent);
+
+  // ---------- shape helpers ----------
+  function lancetShape(w, h, shape = new THREE.Shape()) {
+    const s = h - w * Math.sqrt(3) / 2; // springing line
+    shape.moveTo(-w / 2, 0); shape.lineTo(-w / 2, s);
+    shape.absarc(w / 2, s, w, Math.PI, Math.PI * 2 / 3, true);
+    shape.absarc(-w / 2, s, w, Math.PI / 3, 0, true);
+    shape.lineTo(w / 2, 0); shape.lineTo(-w / 2, 0);
+    return shape;
+  }
+  function lancetPath(w, h, dy = 0) {
+    const p = new THREE.Path(); const s = h - w * Math.sqrt(3) / 2;
+    p.moveTo(-w / 2, dy); p.lineTo(-w / 2, dy + s);
+    p.absarc(w / 2, dy + s, w, Math.PI, Math.PI * 2 / 3, true);
+    p.absarc(-w / 2, dy + s, w, Math.PI / 3, 0, true);
+    p.lineTo(w / 2, dy); p.lineTo(-w / 2, dy);
+    return p;
+  }
+  const extrude = (shape, depth) => new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 12 });
+  function poly(pts) { const s = new THREE.Shape(); s.moveTo(pts[0][0], pts[0][1]); pts.slice(1).forEach(p => s.lineTo(p[0], p[1])); s.closePath(); return s; }
+
+  // A lancet window facing local +z: stone frame + dark glass
+  function lancet(w, h, frame = 0.18) {
+    const g = new THREE.Group();
+    const outer = lancetShape(w + frame * 2, h + frame);
+    outer.holes.push(lancetPath(w, h, frame * 0.5));
+    add(extrude(outer, 0.16), M.stone, 0, 0, 0, g);
+    const glass = new THREE.Mesh(new THREE.ShapeGeometry(lancetShape(w, h)), M.glass);
+    glass.position.set(0, frame * 0.5, 0.02); g.add(glass);
+    // mullion
+    box(0.06, h - w * 0.9, 0.08, M.stone, 0, frame * 0.5, 0.06, g);
+    return g;
+  }
+  // Rose window facing local +z
+  function rose(r, spokes = 8) {
+    const g = new THREE.Group();
+    const ring = new THREE.Shape(); ring.absarc(0, 0, r + 0.22, 0, Math.PI * 2, false);
+    const hole = new THREE.Path(); hole.absarc(0, 0, r, 0, Math.PI * 2, true); ring.holes.push(hole);
+    add(extrude(ring, 0.22), M.stone, 0, 0, 0, g);
+    add(new THREE.CircleGeometry(r, 40), M.glass, 0, 0, 0.03, g);
+    for (let i = 0; i < spokes; i++) {
+      const a = (i / spokes) * Math.PI * 2;
+      const sp = add(new THREE.BoxGeometry(0.07, r * 0.62, 0.1), M.stone, Math.sin(a) * r * 0.62, Math.cos(a) * r * 0.62, 0.08, g);
+      sp.rotation.z = -a;
+      const foil = add(new THREE.TorusGeometry(r * 0.17, 0.035, 6, 20), M.stone, Math.sin(a + Math.PI / spokes) * r * 0.66, Math.cos(a + Math.PI / spokes) * r * 0.66, 0.1, g);
+    }
+    add(new THREE.TorusGeometry(r * 0.3, 0.05, 6, 24), M.stone, 0, 0, 0.1, g);
+    return g;
+  }
+  // Pinnacle: shaft + gablets + pyramid spire + finial
+  function pinnacle(x, y, z, s = 0.5, shaftH = 1, spireH = 1.8, parent = church) {
+    const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g);
+    box(s, shaftH, s, M.stone, 0, 0, 0, g);
+    box(s * 1.18, 0.12, s * 1.18, M.stone, 0, shaftH, 0, g);
+    const sp = add(new THREE.ConeGeometry(s * 0.62, spireH, 4), M.stone, 0, shaftH + 0.12 + spireH / 2, 0, g);
+    sp.rotation.y = Math.PI / 4;
+    add(new THREE.SphereGeometry(s * 0.16, 10, 8), M.stone, 0, shaftH + 0.12 + spireH + 0.04, 0, g);
+    return g;
+  }
+  // Raking cornice with hanging arch frieze, drawn in the plane z
+  function rake(x1, y1, x2, y2, z, parent = church) {
+    const L = Math.hypot(x2 - x1, y2 - y1), a = Math.atan2(y2 - y1, x2 - x1);
+    const c = add(new THREE.BoxGeometry(L + 0.2, 0.26, 0.42), M.stone, (x1 + x2) / 2, (y1 + y2) / 2 + 0.05, z + 0.1, parent);
+    c.rotation.z = a;
+    const n = Math.floor(L / 0.42);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t - 0.36;
+      add(new THREE.TorusGeometry(0.15, 0.035, 4, 10, Math.PI), M.stone, px, py, z + 0.04, parent);
+    }
+  }
+  function statue(x, y, z, parent = church) {
+    const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g);
+    add(new THREE.CylinderGeometry(0.18, 0.26, 1.15, 10), M.stone, 0, 0.58, 0, g);
+    add(new THREE.SphereGeometry(0.15, 12, 10), M.stone, 0, 1.3, 0, g);
+    box(0.6, 0.12, 0.5, M.stone, 0, -0.12, 0, g);
+  }
+
+  // ---------- main volumes (facade plane z = 0, building runs to -z) ----------
+  const NW = 3.5, NH = 12.5, NG = 3.0;          // nave half-width, eave, gable rise
+  const AI = 11.5, AO = 9.5, AX = 8.0;          // aisle inner/outer eave, outer x
+  const pent = (hw, h, g) => poly([[-hw, 0], [hw, 0], [hw, h], [0, h + g], [-hw, h]]);
+  const chevron = (hw, h, g, o, t) => {
+    const s = g / hw;
+    return poly([[-hw - o, h - o * s], [0, h + g], [hw + o, h - o * s], [hw + o, h - o * s + t], [0, h + g + t], [-hw - o, h - o * s + t]]);
+  };
+
+  // nave (front to choir)
+  add(extrude(pent(NW, NH, NG), 22), M.wall, 0, 0, -22);
+  add(extrude(chevron(NW, NH, NG, 0.5, 0.3), 22.6), M.roof, 0, 0, -22.5);
+
+  // aisles (front bay)
+  [1, -1].forEach(sx => {
+    const pts = [[NW, 0], [AX, 0], [AX, AO], [NW, AI]].map(([x, y]) => [x * sx, y]);
+    add(extrude(poly(sx > 0 ? pts : pts.reverse()), 10), M.wall, 0, 0, -10);
+    const s = (AI - AO) / (AX - NW);
+    const rp = [[NW, AI], [AX + 0.4, AO - 0.4 * s], [AX + 0.4, AO - 0.4 * s + 0.28], [NW, AI + 0.28]].map(([x, y]) => [x * sx, y]);
+    add(extrude(poly(sx > 0 ? rp : rp.reverse()), 10.3), M.roof, 0, 0, -10.3);
+    // buttresses on side wall
+    [-3.4, -6.8, -9.6].forEach(z => {
+      box(0.6, 6.5, 0.7, M.stone, sx * (AX + 0.3), 0, z);
+      const cap = add(new THREE.ConeGeometry(0.5, 0.9, 4), M.stone, sx * (AX + 0.3), 6.95, z); cap.rotation.y = Math.PI / 4;
+    });
+    [-1.7, -5.1, -8.2].forEach(z => {
+      const w = lancet(0.95, 4.6); w.position.set(sx * (AX + 0.02), 3.0, z); w.rotation.y = sx * Math.PI / 2; church.add(w);
+    });
+  });
+
+  // transept (crossing z -10..-17), arms to x = ±11
+  const TZ = -13.5, TL = 11;
+  const tr = add(extrude(pent(NW, NH, NG), TL * 2), M.wall, -TL, 0, TZ); tr.rotation.y = Math.PI / 2;
+  const trr = add(extrude(chevron(NW, NH, NG, 0.5, 0.3), TL * 2 + 0.6), M.roof, -TL - 0.3, 0, TZ); trr.rotation.y = Math.PI / 2;
+  [1, -1].forEach(sx => {
+    const face = new THREE.Group(); face.position.set(sx * TL, 0, TZ); face.rotation.y = sx * Math.PI / 2; church.add(face);
+    const rw = rose(1.15, 6); rw.position.set(0, 8.6, 0.02); face.add(rw);
+    [-1.3, 1.3].forEach(x => { const w = lancet(0.8, 4.2); w.position.set(x, 2.4, 0.02); face.add(w); });
+    rake(-NW, NH, 0, NH + NG, 0.02, face); rake(0, NH + NG, NW, NH, 0.02, face);
+    [-NW, NW].forEach(x => { box(0.7, NH + 0.2, 0.5, M.stone, x, 0, 0.1, face); pinnacle(x, NH + 0.2, 0.1, 0.55, 0.9, 1.7, face); });
+    pinnacle(0, NH + NG + 0.1, 0.05, 0.4, 0.4, 1.3, face);
+    box(NW * 2 + 0.6, 0.9, 0.3, M.stone, 0, 0, 0.1, face);
+  });
+
+  // tiburio over the crossing
+  const TB = 8.2, TB0 = NH + 1.2, TBH = 4.2;
+  box(TB, TBH + 1.2, TB, M.wall, 0, NH, TZ);
+  box(TB + 0.4, 0.3, TB + 0.4, M.stone, 0, NH + TBH + 1.2, TZ);
+  const pyr = add(new THREE.ConeGeometry((TB + 0.8) / Math.SQRT2, 3.4, 4), M.roof, 0, NH + TBH + 1.5 + 1.7, TZ); pyr.rotation.y = Math.PI / 4;
+  for (let i = 0; i < 4; i++) {
+    const a = i * Math.PI / 2;
+    const ow = rose(0.8, 6); ow.position.set(Math.sin(a) * (TB / 2 + 0.02), TB0 + 2.3, TZ + Math.cos(a) * (TB / 2 + 0.02)); ow.rotation.y = a; church.add(ow);
+  }
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([a, b]) => pinnacle(a * TB / 2, NH + TBH + 1.5, TZ + b * TB / 2, 0.45, 0.5, 1.4));
+  // lantern + cross
+  const lanY = NH + TBH + 1.5 + 3.4;
+  add(new THREE.CylinderGeometry(0.06, 0.06, 1.8, 6), M.copper, 0, lanY + 0.6, TZ);
+  add(new THREE.BoxGeometry(0.9, 0.08, 0.08), M.copper, 0, lanY + 1.15, TZ);
+
+  // apse: half-octagon at the back
+  const AZ = -22, AH = 10.5;
+  add(new THREE.CylinderGeometry(NW, NW, AH, 8, 1, false, Math.PI / 2, Math.PI), M.wall, 0, AH / 2, AZ);
+  add(new THREE.CylinderGeometry(0.01, NW + 0.45, 3.2, 8, 1, false, Math.PI / 2, Math.PI), M.roof, 0, AH + 1.6, AZ);
+  box(NW * 2, AH, 0.4, M.wall, 0, 0, AZ + 0.2); // close the half-prism against the nave
+  for (let k = 0; k < 4; k++) {
+    const th = Math.PI / 2 + (k + 0.5) * Math.PI / 4, d = NW * Math.cos(Math.PI / 8) + 0.02;
+    if (k === 0 || k === 3) continue;
+    const w = lancet(0.75, 4.2); w.position.set(Math.sin(th) * d, 3.2, AZ + Math.cos(th) * d); w.rotation.y = th; church.add(w);
+  }
+  for (let k = 0; k <= 4; k++) {
+    const th = Math.PI / 2 + k * Math.PI / 4;
+    box(0.45, 7, 0.55, M.stone, Math.sin(th) * (NW + 0.15), 0, AZ + Math.cos(th) * (NW + 0.15));
+  }
+
+  // plinth around everything
+  box(AX * 2 + 0.4, 0.9, 10.2, M.stone, 0, 0, -5);
+  box(TL * 2 + 0.3, 0.9, NW * 2 + 0.3, M.stone, 0, 0, TZ);
+  box(NW * 2 + 0.3, 0.9, 12, M.stone, 0, 0, -16.5);
+
+  // ---------- facade ----------
+  const F = new THREE.Group(); church.add(F);
+  // pilasters
+  const PIL = [[NW, NH + 0.8], [AX - 0.35, AO + 0.3]];
+  [1, -1].forEach(sx => {
+    PIL.forEach(([x, h], i) => {
+      box(0.9, h, 0.55, M.stone, sx * x, 0, 0.2, F);
+      box(1.05, 0.22, 0.7, M.stone, sx * x, h, 0.2, F);
+      pinnacle(sx * x, h + 0.22, 0.2, 0.62, i === 0 ? 1.4 : 1.1, i === 0 ? 2.4 : 2.0, F);
+    });
+    // statue on a corbel at the aisle gable top, outer face of the inner pilaster
+    box(0.7, 0.25, 0.75, M.stone, sx * (NW + 0.75), AI + 0.05, 0.35, F);
+    statue(sx * (NW + 0.75), AI + 0.42, 0.4, F);
+    // aisle half-gable cornice & intermediate pinnacle
+    rake(sx * (NW + 0.45), AI - 0.1, sx * (AX - 0.8), AO + 0.12, 0, F);
+    const mx = sx * 5.85, my = AI - (AI - AO) * ((5.85 - NW - 0.45) / (AX - 0.8 - NW - 0.45));
+    pinnacle(mx, my - 0.05, 0.1, 0.38, 0.55, 1.2, F);
+    // aisle lancet
+    const w = lancet(1.05, 5.4); w.position.set(sx * 5.85, 2.6, 0.01); F.add(w);
+  });
+  box(AX * 2 + 0.6, 0.95, 0.4, M.stone, 0, 0, 0.18, F);
+  // central gable
+  rake(-NW - 0.3, NH + 0.05, 0, NH + NG + 0.2, 0, F);
+  rake(0, NH + NG + 0.2, NW + 0.3, NH + 0.05, 0, F);
+  pinnacle(0, NH + NG + 0.35, 0.15, 0.48, 0.6, 1.9, F);
+  // rose window
+  const R = rose(1.45, 8); R.position.set(0, 9.7, 0.02); F.add(R);
+  // portal: recessed pointed arch with door, tympanum and wimperg
+  const P = new THREE.Group(); P.position.set(0, 0.95, 0.02); F.add(P);
+  const outer = lancetShape(3.5, 6.0); outer.holes.push(lancetPath(2.4, 5.4, 0));
+  add(extrude(outer, 0.55), M.stone, 0, 0, 0, P);
+  add(new THREE.ShapeGeometry(lancetShape(2.4, 5.4)), M.tymp, 0, 0, 0.05, P);
+  box(2.1, 3.9, 0.1, M.door, 0, 0, 0.06, P);
+  box(2.4, 0.22, 0.25, M.stone, 0, 3.9, 0.1, P);                  // lintel
+  add(new THREE.CircleGeometry(0.42, 24), M.trim, 0, 4.75, 0.08, P); // tympanum medallion
+  // jamb columns
+  [-1.45, 1.45].forEach(x => add(new THREE.CylinderGeometry(0.11, 0.11, 3.9, 10), M.stone, x, 1.95, 0.5, P));
+  // wimperg (gable over portal)
+  add(extrude(poly([[-2.15, 3.9], [2.15, 3.9], [2.15, 5.0], [0, 7.3], [-2.15, 5.0]]), 0.3), M.trim, 0, 0, 0.05, P);
+  [-2.0, 2.0].forEach(x => pinnacle(x, 0, 0.55, 0.36, 5.0, 1.5, P));
+  pinnacle(0, 7.2, 0.45, 0.28, 0.2, 0.8, P);
+  // steps
+  for (let i = 0; i < 3; i++) box(5.6 + (2 - i) * 0.8, 0.32 * (i + 1), 0.45, M.sagrato, 0, 0, 0.62 + (2 - i) * 0.45, F);
+
+  // ---------- ground ----------
+  const ground = add(new THREE.CircleGeometry(160, 64), M.grass, 0, -0.01, 0); ground.rotation.x = -Math.PI / 2;
+  const piazza = add(new THREE.PlaneGeometry(34, 26), M.cobble, 0, 0, 2); piazza.rotation.x = -Math.PI / 2;
+  const sag = add(new THREE.ShapeGeometry(poly([[-9, 0], [9, 0], [12, 7], [12, 13], [-6, 13], [-9, 9]])), M.sagrato, 0, 0.01, 0);
+  sag.rotation.x = -Math.PI / 2; sag.scale.y = -1;
+  const road = add(new THREE.PlaneGeometry(220, 7), new THREE.MeshStandardMaterial({ color: '#5d5f63', roughness: 1 }), 0, 0.005, 17); road.rotation.x = -Math.PI / 2;
+
+  scene.traverse(o => { if (o.isMesh) { o.castShadow = o !== ground && o !== piazza && o !== road && o !== sag; o.receiveShadow = true; } });
+
+  // ---------- light: sun path at the site's latitude in early October ----------
+  const hemi = new THREE.HemisphereLight('#dce8f5', '#7a7464', 0.55); scene.add(hemi);
+  const sun = new THREE.DirectionalLight('#fff4e0', 1.25); scene.add(sun); scene.add(sun.target);
+  sun.target.position.set(0, 5, -10);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 1, far: 200 });
+  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+
+  const LAT = 45 * Math.PI / 180, DEC = -5.4 * Math.PI / 180, FACADE_AZ = 135; // facade normal (+z) points SE
+  function setSun(hour) {
+    const H = (hour - 12) * 15 * Math.PI / 180;
+    const el = Math.asin(Math.sin(LAT) * Math.sin(DEC) + Math.cos(LAT) * Math.cos(DEC) * Math.cos(H));
+    const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(LAT) - Math.tan(DEC) * Math.cos(LAT)) + Math.PI;
+    const rel = az - FACADE_AZ * Math.PI / 180;
+    const d = new THREE.Vector3(-Math.sin(rel) * Math.cos(el), Math.sin(el), Math.cos(rel) * Math.cos(el));
+    sun.position.copy(sun.target.position).addScaledVector(d, 90);
+    const k = Math.max(0, Math.min(1, Math.sin(el) * 3));
+    sun.intensity = 0.95 * k;
+    sun.color.set(new THREE.Color('#ffb46b').lerp(new THREE.Color('#fff4e0'), Math.min(1, Math.sin(el) * 2.2)));
+    hemi.intensity = 0.28 + 0.18 * k;
+    const hh = Math.floor(hour), mm = Math.round((hour - hh) * 60);
+    document.getElementById('sunOut').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+  const sunInput = document.getElementById('sun');
+  sunInput.addEventListener('input', () => setSun(+sunInput.value));
+  setSun(+sunInput.value);
+
+  // ---------- camera views ----------
+  const VIEWS = {
+    front:  { pos: [-13, 7, 40],   tgt: [0, 8, -5] },
+    aerial: { pos: [-30, 34, 30],  tgt: [0, 5, -10] },
+    side:   { pos: [38, 9, -2],    tgt: [0, 7, -11] },
+    rear:   { pos: [22, 18, -48],  tgt: [0, 7, -12] },
+  };
+  let tween = null;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function goTo(name, instant) {
+    const v = VIEWS[name];
+    document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === name)));
+    const to = { p: new THREE.Vector3(...v.pos), t: new THREE.Vector3(...v.tgt) };
+    if (instant || reduce) { camera.position.copy(to.p); controls.target.copy(to.t); tween = null; return; }
+    tween = { from: { p: camera.position.clone(), t: controls.target.clone() }, to, t0: performance.now(), dur: 1100 };
+  }
+  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => goTo(b.dataset.view)));
+  controls.addEventListener('start', () => { tween = null; document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', 'false')); });
+  goTo('front', true);
+
+  const spin = document.getElementById('spin');
+  spin.addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; spin.setAttribute('aria-pressed', String(controls.autoRotate)); });
+  const det = document.getElementById('details'), panel = document.getElementById('panel');
+  det.addEventListener('click', () => { const o = panel.classList.toggle('open'); det.setAttribute('aria-expanded', String(o)); });
+
+  // ---------- compass ----------
+  const needle = document.getElementById('needle');
+  const relN = -FACADE_AZ * Math.PI / 180;
+  const north = new THREE.Vector2(-Math.sin(relN), Math.cos(relN)); // world (x,z) of true north
+  function updateCompass() {
+    const f = new THREE.Vector2(controls.target.x - camera.position.x, controls.target.z - camera.position.z).normalize();
+    const right = new THREE.Vector2(-f.y, f.x);
+    const ang = Math.atan2(north.dot(right), north.dot(f));
+    needle.style.transform = `rotate(${ang}rad)`;
+  }
+
+  // ---------- loop ----------
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    camera.fov = w < 640 ? 52 : 40; camera.updateProjectionMatrix();
+  }
+  addEventListener('resize', resize); resize();
+  const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  renderer.setAnimationLoop(now => {
+    if (tween) {
+      const k = Math.min(1, (now - tween.t0) / tween.dur), e = ease(k);
+      camera.position.lerpVectors(tween.from.p, tween.to.p, e);
+      controls.target.lerpVectors(tween.from.t, tween.to.t, e);
+      if (k >= 1) tween = null;
+    }
+    controls.update(); updateCompass();
+    renderer.render(scene, camera);
+  });
+})();
+</script>

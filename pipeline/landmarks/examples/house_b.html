@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House B</title>
+<style>
+  :root { --bg: #dfe6ea; --fg: #1d2327; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1b2024; --fg: #e4e8ea; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #info { position: absolute; left: 12px; top: 10px; max-width: 360px; background: color-mix(in srgb, var(--bg) 85%, transparent); padding: 8px 10px; border-radius: 6px; }
+  #views { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  button { font: inherit; padding: 4px 8px; border-radius: 5px; border: 1px solid #8889; background: var(--bg); color: var(--fg); cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="info"><b>House B (example landmark)</b><br>
+Model frame: x = map east &minus; X0, z = &minus;(map north &minus; Y0), y = height &minus; Z0 (ground floor on the road side). Footprint and height: regional topographic database; roof, chimneys: orthophoto; facades, fences, gate: Street View.</div>
+<div id="views">
+  <button data-v="road">From the road</button><button data-v="ne">From the side lane</button>
+  <button data-v="west">From the west</button><button data-v="south">South side</button><button data-v="air">Above</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  // ------------------------------------------------------------------ frame
+  const X0 = 867, Y0 = 233, Z0 = 170.7;            // map metres -> model origin
+  const T = (p) => [p[0] - X0, p[2] - Z0, -(p[1] - Y0)];  // [x, y(north), h] -> three.js
+  const DEG = Math.PI / 180;
+
+  // ------------------------------------------------------------------ textures
+  function canvas(w, h, draw) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); draw(g, w, h);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+  }
+  function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+  function noise(g, w, h, base, amp, seed, size = 1) {
+    const r = rng(seed); g.fillStyle = base; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < w * h / (size * size) / 2; i++) {
+      const v = (r() - 0.5) * amp; g.fillStyle = v > 0 ? `rgba(255,255,255,${v})` : `rgba(0,0,0,${-v})`;
+      g.fillRect(Math.floor(r() * w), Math.floor(r() * h), size, size);
+    }
+  }
+  const TEX = {
+    plaster: canvas(256, 256, (g, w, h) => { noise(g, w, h, '#ebe7de', 0.07, 7, 2);
+      const r = rng(3); for (let i = 0; i < 10; i++) { g.fillStyle = `rgba(120,110,95,${0.012 + r() * 0.015})`;
+        g.fillRect(r() * w, r() * h, 20 + r() * 60, 3 + r() * 40); } }),
+    roof: canvas(256, 256, (g, w, h) => {           // coppi: 4 courses x 6 tiles per 1 m tile
+      g.fillStyle = '#7b3e26'; g.fillRect(0, 0, w, h); const r = rng(11);
+      for (let row = 0; row < 4; row++) for (let k = 0; k < 6; k++) {
+        const x = k * w / 6, y = row * h / 4, tone = 150 + r() * 45;
+        const grd = g.createLinearGradient(x, 0, x + w / 6, 0);
+        grd.addColorStop(0, `rgb(${tone * 0.62},${tone * 0.30},${tone * 0.18})`);
+        grd.addColorStop(0.5, `rgb(${tone},${tone * 0.52},${tone * 0.33})`);
+        grd.addColorStop(1, `rgb(${tone * 0.58},${tone * 0.28},${tone * 0.17})`);
+        g.fillStyle = grd; g.fillRect(x + 2, y + 3, w / 6 - 4, h / 4 - 4);
+        g.fillStyle = 'rgba(30,15,8,0.55)'; g.fillRect(x, y + h / 4 - 5, w / 6, 5);
+        if (r() < 0.35) { g.fillStyle = 'rgba(60,70,40,0.25)'; g.fillRect(x + 4, y + 6 + r() * 30, 12, 8); }
+      } }),
+    fascia: canvas(64, 64, (g, w, h) => noise(g, w, h, '#3d2b20', 0.12, 5)),
+    timber: canvas(64, 256, (g, w, h) => { noise(g, w, h, '#47301f', 0.10, 9);
+      const r = rng(4); for (let i = 0; i < 26; i++) { g.strokeStyle = `rgba(20,10,5,${0.2 + r() * 0.3})`;
+        g.beginPath(); const x = r() * w; g.moveTo(x, 0); g.lineTo(x + (r() - 0.5) * 6, h); g.stroke(); } }),
+    wood: canvas(128, 256, (g, w, h) => { noise(g, w, h, '#6d4a2f', 0.10, 12);
+      for (let k = 0; k <= 8; k++) { g.fillStyle = 'rgba(30,18,10,0.5)'; g.fillRect(k * w / 8, 0, 2, h); } }),
+    garage: canvas(256, 256, (g, w, h) => { noise(g, w, h, '#5f3f28', 0.08, 13);
+      for (let k = 0; k < 16; k++) { g.fillStyle = 'rgba(25,14,8,0.45)'; g.fillRect(k * w / 16, 0, 3, h); }
+      g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, w, 6); g.fillRect(0, h - 6, w, 6); }),
+    shutter: canvas(128, 128, (g, w, h) => { g.fillStyle = '#6b4a31'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 16; k++) { g.fillStyle = 'rgba(25,14,8,0.5)'; g.fillRect(0, k * h / 16, w, 2);
+        g.fillStyle = 'rgba(255,230,200,0.08)'; g.fillRect(0, k * h / 16 + 2, w, 2); } }),
+    glass: canvas(64, 64, (g, w, h) => { const grd = g.createLinearGradient(0, 0, w, h);
+      grd.addColorStop(0, '#3c474d'); grd.addColorStop(1, '#1d2428'); g.fillStyle = grd; g.fillRect(0, 0, w, h); }),
+    iron: canvas(16, 16, (g, w, h) => { g.fillStyle = '#1c1c1c'; g.fillRect(0, 0, w, h); }),
+    sill: canvas(64, 64, (g, w, h) => noise(g, w, h, '#cdc8bd', 0.12, 21)),
+    concrete: canvas(128, 128, (g, w, h) => noise(g, w, h, '#a8a397', 0.16, 23, 2)),
+    pillar: canvas(64, 64, (g, w, h) => noise(g, w, h, '#86402c', 0.10, 25)),
+    fence: canvas(64, 128, (g, w, h) => { noise(g, w, h, '#6c4529', 0.12, 27);
+      g.fillStyle = 'rgba(20,10,5,0.35)'; for (let k = 0; k < 5; k++) g.fillRect(0, k * h / 5, w, 1); }),
+    solar: canvas(128, 192, (g, w, h) => { g.fillStyle = '#1c2533'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#7d8590'; g.lineWidth = 1; for (let i = 0; i <= 6; i++) { g.beginPath(); g.moveTo(i * w / 6, 0); g.lineTo(i * w / 6, h); g.stroke(); }
+      for (let j = 0; j <= 10; j++) { g.beginPath(); g.moveTo(0, j * h / 10); g.lineTo(w, j * h / 10); g.stroke(); }
+      g.strokeStyle = '#c9ced4'; g.lineWidth = 4; g.strokeRect(0, 0, w, h); }),
+    plate: canvas(128, 96, (g, w, h) => { g.fillStyle = '#f4f2ec'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#1f3c78'; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10);
+      g.fillStyle = '#1f3c78'; g.font = 'bold 62px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('67', w / 2, h / 2 + 3); }),
+    plaster2: canvas(256, 256, (g, w, h) => { noise(g, w, h, '#e3cf9f', 0.07, 31, 2);
+      const r = rng(5); for (let i = 0; i < 10; i++) { g.fillStyle = `rgba(120,96,60,${0.012 + r() * 0.02})`;
+        g.fillRect(r() * w, r() * h, 20 + r() * 60, 3 + r() * 40); } }),
+    stone: canvas(256, 256, (g, w, h) => {          // limestone blocks, local style
+      g.fillStyle = '#8f8676'; g.fillRect(0, 0, w, h); const r = rng(41);
+      let y = 0; while (y < h) { const rh = 18 + r() * 22; let x = -r() * 30;
+        while (x < w) { const bw = 30 + r() * 50, t = 150 + r() * 50;
+          g.fillStyle = `rgb(${t},${t * 0.95},${t * 0.85})`; g.fillRect(x + 2, y + 2, bw - 4, rh - 4); x += bw; }
+        y += rh; } }),
+    shade: canvas(64, 64, (g, w, h) => { const grd = g.createLinearGradient(0, 0, 0, h);
+      grd.addColorStop(0, '#2a2622'); grd.addColorStop(1, '#4a443c'); g.fillStyle = grd; g.fillRect(0, 0, w, h); }),
+    irongrey: canvas(16, 16, (g, w, h) => { g.fillStyle = '#7f858a'; g.fillRect(0, 0, w, h); }),
+  };
+  TEX.plate = canvas(128, 96, (g, w, h) => { g.fillStyle = '#f4f2ec'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#1f3c78'; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10);
+    g.fillStyle = '#1f3c78'; g.font = 'bold 50px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('67/b', w / 2, h / 2 + 3); });
+  // metres per texture repeat (u, v)
+  const TILE = { plaster: [2.5, 2.5], roof: [1, 1], fascia: [1, 1], timber: [0.2, 3], wood: [1, 2.2], garage: [2.4, 2.25],
+    shutter: [1, 1], glass: [1, 1], iron: [1, 1], sill: [1, 1], concrete: [1.5, 1.5], pillar: [0.5, 0.5], fence: [0.1, 1.0],
+    solar: [1.0, 1.65], plate: [0.24, 0.18], plaster2: [2.5, 2.5], stone: [1.2, 1.2], shade: [1, 1], irongrey: [1, 1] };
+
+  // ------------------------------------------------------------------ geometry builder (local metres)
+  const BUF = {};
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (a) => { const l = Math.hypot(...a) || 1; return mul(a, 1 / l); };
+  function newell(pts) { let n = [0, 0, 0];
+    for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length];
+      n = add3(n, [(a[1] - b[1]) * (a[2] + b[2]), (a[2] - b[2]) * (a[0] + b[0]), (a[0] - b[0]) * (a[1] + b[1])]); }
+    return norm(n); }
+  // convex polygon, local coords; `out` = wanted outward direction (flips winding if needed);
+  // uv basis: walls -> u along the wall, v = height; near-horizontal -> x / y; or explicit {u, v}
+  function face(mat, pts, out, basis) {
+    let n = newell(pts);
+    if (out && dot(n, out) < 0) { pts = pts.slice().reverse(); n = mul(n, -1); }
+    let u, v;
+    if (basis) { u = basis.u; v = basis.v; }
+    else if (Math.abs(n[2]) > 0.85) { u = [1, 0, 0]; v = [0, 1, 0]; }
+    else { u = norm([-n[1], n[0], 0]); v = [0, 0, 1]; }
+    const [tu, tv] = TILE[mat] || [1, 1], o = basis && basis.o ? basis.o : [0, 0, 0];
+    const b = BUF[mat] ??= { p: [], n: [], uv: [] };
+    const tn = [n[0], n[2], -n[1]], push = (p) => { b.p.push(...T(p)); b.n.push(...tn);
+      const d = sub(p, o); b.uv.push(dot(d, u) / tu, dot(d, v) / tv); };
+    for (let i = 1; i < pts.length - 1; i++) { push(pts[0]); push(pts[i]); push(pts[i + 1]); }
+  }
+  // oriented box: centre c [x,y,z], size [sx (along yaw), sy, sz], yaw (rad from +x), optional per-face material map
+  function box(mat, c, s, yaw = 0, mats = {}) {
+    const ca = Math.cos(yaw), sa = Math.sin(yaw), ax = [ca, sa, 0], ay = [-sa, ca, 0], az = [0, 0, 1];
+    const P = (i, j, k) => add3(add3(add3(c, mul(ax, i * s[0] / 2)), mul(ay, j * s[1] / 2)), mul(az, k * s[2] / 2));
+    const F = [[ax, [P(1, -1, -1), P(1, 1, -1), P(1, 1, 1), P(1, -1, 1)], 'px'], [mul(ax, -1), [P(-1, -1, -1), P(-1, 1, -1), P(-1, 1, 1), P(-1, -1, 1)], 'nx'],
+      [ay, [P(-1, 1, -1), P(1, 1, -1), P(1, 1, 1), P(-1, 1, 1)], 'py'], [mul(ay, -1), [P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1)], 'ny'],
+      [az, [P(-1, -1, 1), P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1)], 'pz'], [mul(az, -1), [P(-1, -1, -1), P(1, -1, -1), P(1, 1, -1), P(-1, 1, -1)], 'nz']];
+    for (const [o, q, key] of F) face(mats[key] || mat, q, o);
+  }
+  // box between two points (beams, rails, posts), square section w x h
+  function beam(mat, a, b, w, h = w) {
+    const d = sub(b, a), L = Math.hypot(...d), yaw = Math.atan2(d[1], d[0]);
+    const pitch = Math.atan2(d[2], Math.hypot(d[0], d[1]));
+    const ax = norm(d), side = norm(Math.abs(ax[2]) > 0.99 ? [1, 0, 0] : [-Math.sin(yaw), Math.cos(yaw), 0]), up = cross(ax, side);
+    const c = mul(add3(a, b), 0.5);
+    const P = (i, j, k) => add3(add3(add3(c, mul(ax, i * L / 2)), mul(side, j * w / 2)), mul(up, k * h / 2));
+    const quads = [[P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1)], [P(-1, 1, -1), P(1, 1, -1), P(1, 1, 1), P(-1, 1, 1)],
+      [P(-1, -1, 1), P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1)], [P(-1, -1, -1), P(1, -1, -1), P(1, 1, -1), P(-1, 1, -1)],
+      [P(-1, -1, -1), P(-1, 1, -1), P(-1, 1, 1), P(-1, -1, 1)], [P(1, -1, -1), P(1, 1, -1), P(1, 1, 1), P(1, -1, 1)]];
+    for (const q of quads) { const n = newell(q); const cc = q.reduce((s, p) => add3(s, mul(p, 0.25)), [0, 0, 0]);
+      face(mat, q, sub(cc, c)); }
+  }
+  // vertical walls of a CCW footprint ring from z0 to ztop(x, y)
+  function walls(mat, ring, z0, ztop) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length], out = [b[1] - a[1], -(b[0] - a[0]), 0];
+      const ta = ztop(a[0], a[1]), tb = ztop(b[0], b[1]);
+      face(mat, [[a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], tb], [a[0], a[1], ta]], out);
+    }
+  }
+  // thick sloped slab from 4 top corners (any order around), thickness t below; top/side/under materials
+  function slab(top, corners, t, side = 'fascia', under = 'plaster', basis) {
+    const c = corners.reduce((s, p) => add3(s, mul(p, 0.25)), [0, 0, 0]);
+    const n = newell(corners), up = n[2] < 0 ? mul(n, -1) : n;
+    const low = corners.map((p) => sub(p, mul(up, t)));
+    face(top, corners, up, basis); face(under, low, mul(up, -1), basis);
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4;
+      const q = [corners[i], corners[j], low[j], low[i]], m = q.reduce((s, p) => add3(s, mul(p, 0.25)), [0, 0, 0]);
+      face(side, q, sub(m, c)); }
+  }
+  // a window / door set into a wall: wall plane point o, outward normal n (horizontal), centre along-wall s, sill height z
+  function opening(o, n, s, z, w, h, kind = 'window', opts = {}) {
+    const along = [n[1], -n[0], 0], P = (ds, dz, dn) => add3(add3(add3(o, mul(along, s + ds)), [0, 0, z + dz]), mul(n, dn));
+    const inset = 0.03;   // openings are laid on the wall surface (walls are not cut)
+    if (kind === 'garage') { face('garage', [P(-w / 2, 0, inset), P(w / 2, 0, inset), P(w / 2, h, inset), P(-w / 2, h, inset)], n,
+        { u: along, v: [0, 0, 1], o: P(-w / 2, 0, 0) }); frame(P, w, h, inset, along); return; }
+    if (kind === 'door') {
+      face('wood', [P(-w / 2, 0, inset), P(w / 2, 0, inset), P(w / 2, h * 0.72, inset), P(-w / 2, h * 0.72, inset)], n, { u: along, v: [0, 0, 1], o: P(-w / 2, 0, 0) });
+      face('glass', [P(-w / 2, h * 0.72, inset), P(w / 2, h * 0.72, inset), P(w / 2, h, inset), P(-w / 2, h, inset)], n);
+      for (let k = 1; k < 6; k++) beam('iron', P(-w / 2 + k * w / 6, h * 0.72, inset + 0.03), P(-w / 2 + k * w / 6, h - 0.02, inset + 0.03), 0.02);
+      beam('iron', P(-w / 2, h * 0.86, inset + 0.03), P(w / 2, h * 0.86, inset + 0.03), 0.02);
+      frame(P, w, h, inset, along); return; }
+    // window: glass, roller shutter part-way down, shutter box line, stone sill
+    const sh = opts.shutter ?? 0.45;
+    face('glass', [P(-w / 2, 0, inset), P(w / 2, 0, inset), P(w / 2, h * (1 - sh), inset), P(-w / 2, h * (1 - sh), inset)], n);
+    if (sh > 0) face('shutter', [P(-w / 2, h * (1 - sh), inset + 0.02), P(w / 2, h * (1 - sh), inset + 0.02), P(w / 2, h, inset + 0.02), P(-w / 2, h, inset + 0.02)], n,
+      { u: along, v: [0, 0, 1], o: P(-w / 2, 0, 0) });
+    if (h > 1.6 && opts.mullion !== false) beam('wood', P(0, 0, inset + 0.01), P(0, h * (1 - sh), inset + 0.01), 0.05);
+    frame(P, w, h, inset, along);
+    sill(P, w);
+    if (opts.grille) for (let k = 1; k < 5; k++) beam('iron', P(-w / 2 + k * w / 5, 0.02, 0.05), P(-w / 2 + k * w / 5, h - 0.02, 0.05), 0.018);
+  }
+  function frame(P, w, h, inset, along) {   // slim surround proud of the wall
+    const f = 0.07, d = inset + 0.03;
+    beam('sill', P(-w / 2 - f / 2, 0, d), P(-w / 2 - f / 2, h + f, d), f, 0.06);
+    beam('sill', P(w / 2 + f / 2, 0, d), P(w / 2 + f / 2, h + f, d), f, 0.06);
+    beam('sill', P(-w / 2 - f, h + f / 2, d), P(w / 2 + f, h + f / 2, d), f, 0.06);
+  }
+  function sill(P, w) {
+    const a = P(-w / 2 - 0.05, -0.05, 0.06), b = P(w / 2 + 0.05, -0.05, 0.06), c = P(w / 2 + 0.05, -0.05, -0.02), d = P(-w / 2 - 0.05, -0.05, -0.02);
+    slab('sill', [add3(d, [0, 0, 0.05]), add3(c, [0, 0, 0.05]), add3(b, [0, 0, 0.05]), add3(a, [0, 0, 0.05])], 0.05, 'sill', 'sill');
+  }
+  function railing(path, z0, z1, spacing = 0.12, mat = 'iron') {     // wrought-iron balustrade along a polyline
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.round(L / spacing));
+      const za = a[2] ?? 0, zb = b[2] ?? 0;
+      beam(mat, [a[0], a[1], za + z1], [b[0], b[1], zb + z1], 0.045);
+      beam(mat, [a[0], a[1], za + z0 + 0.06], [b[0], b[1], zb + z0 + 0.06], 0.03);
+      for (let j = 0; j <= k; j++) { const t = j / k, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, z = za + (zb - za) * t;
+        beam(mat, [x, y, z + z0], [x, y, z + z1], 0.018); }
+    }
+  }
+
+  // an opening at fraction f along the footprint edge a->b (ring CCW: outward = right of a->b)
+  function onEdge(a, b, f, z, w, h, kind = 'window', o = {}) {
+    const nn = norm([b[1] - a[1], -(b[0] - a[0]), 0]), p = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, 0];
+    const along = [nn[1], -nn[0], 0], s = dot(p, along);
+    opening(sub(p, mul(along, s)), nn, s, z, w, h, kind, o);
+  }
+  // ------------------------------------------------------------------ the house (67b)
+  const H = (h) => Z0 + h;          // heights relative to the ground floor on the road side
+  const BASE = H(-3.0);             // the ground falls ~2.5 m to the south: exposed basement there
+  // the house is turned 12.3 deg: s along it (to ENE), t across it (to NNW, towards the road)
+  const TH = 12.3 * DEG, UU = [Math.cos(TH), Math.sin(TH), 0], VV = [-Math.sin(TH), Math.cos(TH), 0];
+  const OO = [X0, Y0];
+  const W2 = (s, t, z = 0) => [OO[0] + UU[0] * s + VV[0] * t, OO[1] + UU[1] * s + VV[1] * t, z];
+  // a gabled block, ridge along s; wall materials per side; returns its roof height function z(t)
+  function gabled(B) {
+    const { s0, s1, t0, t1, eave, pitch, wall, ends = wall, westEnd = true, eastEnd = true } = B;
+    const tm = (t0 + t1) / 2, k = Math.tan(pitch), ridge = eave + (t1 - tm) * k;
+    const P = (s, t, z) => W2(s, t, z);
+    face(wall.south || wall, [P(s0, t0, BASE), P(s1, t0, BASE), P(s1, t0, eave), P(s0, t0, eave)], mul(VV, -1));
+    face(wall.north || wall, [P(s0, t1, BASE), P(s1, t1, BASE), P(s1, t1, eave), P(s0, t1, eave)], VV);
+    if (westEnd) face(ends.west || ends, [P(s0, t0, BASE), P(s0, t1, BASE), P(s0, t1, eave), P(s0, tm, ridge), P(s0, t0, eave)], mul(UU, -1));
+    if (eastEnd) face(ends.east || ends, [P(s1, t0, BASE), P(s1, t1, BASE), P(s1, t1, eave), P(s1, tm, ridge), P(s1, t0, eave)], UU);
+    const oe = B.oe ?? 0.6, og = B.og ?? 0.5, zE = eave - oe * k + 0.18, zR = ridge + 0.18;
+    const N = [P(s0 - og, t1 + oe, zE), P(s1 + og, t1 + oe, zE), P(s1 + og, tm, zR), P(s0 - og, tm, zR)];
+    const S = [P(s0 - og, tm, zR), P(s1 + og, tm, zR), P(s1 + og, t0 - oe, zE), P(s0 - og, t0 - oe, zE)];
+    const upN = norm(add3(mul(VV, -1), [0, 0, k])), upS = norm(add3(VV, [0, 0, k]));
+    slab('roof', N, 0.2, 'fascia', 'plaster', { u: UU, v: upN, o: N[0] });
+    slab('roof', S, 0.2, 'fascia', 'plaster', { u: UU, v: upS, o: S[3] });
+    beam('roof', P(s0 - og, tm, zR + 0.06), P(s1 + og, tm, zR + 0.06), 0.26, 0.12);
+    return { ridge, tm, k, roofZ: (t) => ridge - Math.abs(t - tm) * k };
+  }
+  // ring corners (CCW seen from above) of a block, for onEdge(): SW, SE, NE, NW
+  const ringOf = (s0, s1, t0, t1) => [W2(s0, t0), W2(s1, t0), W2(s1, t1), W2(s0, t1)];
+  function arch(a, b, f, z, w, h) {                  // arched porch opening (dark recess + stone trim)
+    const nn = norm([b[1] - a[1], -(b[0] - a[0]), 0]), al = [nn[1], -nn[0], 0];
+    const c = add3(add3(a, mul(sub(b, a), f)), mul(nn, 0.03)), r = w / 2, hs = h - r, pts = [], trim = [];
+    pts.push(add3(c, add3(mul(al, -r), [0, 0, z])), add3(c, add3(mul(al, r), [0, 0, z])));
+    for (let i = 0; i <= 10; i++) { const a_ = Math.PI * i / 10; pts.push(add3(c, add3(mul(al, r * Math.cos(a_)), [0, 0, z + hs + r * Math.sin(a_)]))); }
+    face('shade', [pts[0], pts[1], ...pts.slice(2)], nn);
+    for (let i = 0; i < 10; i++) beam('sill', add3(pts[2 + i], mul(nn, 0.04)), add3(pts[3 + i], mul(nn, 0.04)), 0.14, 0.06);
+    for (const sg of [-1, 1]) beam('sill', add3(c, add3(mul(al, sg * (r + 0.07)), [0, 0, z])), add3(c, add3(mul(al, sg * (r + 0.07)), [0, 0, z + hs])), 0.14, 0.06);
+  }
+
+  // main block (ochre plaster), GeoDBT: eave 177.85 m, 271 m2 with the west wing
+  const M = { s0: -2.15, s1: 11.7, t0: -5.9, t1: 5.9 };
+  const RM = gabled({ ...M, eave: H(7.15), pitch: 24 * DEG, wall: 'plaster2', westEnd: true });
+  // west wing (stone-faced, Street View from the road): a little lower, a little further north
+  const Wb = { s0: -11.85, s1: -2.15, t0: -5.0, t1: 6.4 };
+  const RW = gabled({ ...Wb, eave: H(6.75), pitch: 24 * DEG, wall: 'stone', eastEnd: false });
+  const rM = ringOf(M.s0, M.s1, M.t0, M.t1), rW = ringOf(Wb.s0, Wb.s1, Wb.t0, Wb.t1);
+
+  // road (north) side: three arches on the ground floor, four windows above; stone wing: two + two
+  for (const f of [0.2, 0.42, 0.64]) arch(rM[2], rM[3], f, H(0.0), 2.0, 2.7);
+  onEdge(rM[2], rM[3], 0.86, H(0.0), 1.0, 2.25, 'door');
+  for (const f of [0.12, 0.37, 0.62, 0.87]) onEdge(rM[2], rM[3], f, H(3.9), 1.0, 1.4, 'window', { shutter: 0.35 });
+  for (const f of [0.3, 0.72]) { onEdge(rW[2], rW[3], f, H(0.9), 0.9, 1.3, 'window', { shutter: 0.3 });
+    onEdge(rW[2], rW[3], f, H(3.8), 0.9, 1.3, 'window', { shutter: 0.3 }); }
+  // west gable end (stone): two windows per floor, a small one in the gable
+  for (const f of [0.3, 0.7]) { onEdge(rW[3], rW[0], f, H(0.9), 0.9, 1.3, 'window', { shutter: 0.3 });
+    onEdge(rW[3], rW[0], f, H(3.8), 0.9, 1.3, 'window', { shutter: 0.3 }); }
+  onEdge(rW[3], rW[0], 0.5, H(6.9), 0.6, 0.6, 'window', { shutter: 0, mullion: false });
+  // east gable end (plaster): windows on three levels, balcony with grey railing on the first floor
+  for (const f of [0.25, 0.75]) { onEdge(rM[1], rM[2], f, H(0.6), 1.0, 1.4, 'window', { shutter: 0.35 }); }
+  onEdge(rM[1], rM[2], 0.15, H(-2.2), 1.0, 1.1, 'window', { shutter: 0.3 });
+  onEdge(rM[1], rM[2], 0.5, H(3.5), 1.1, 2.3, 'window', { shutter: 0.25 });
+  onEdge(rM[1], rM[2], 0.5, H(6.9), 0.7, 0.8, 'window', { shutter: 0.3, mullion: false });
+  { const a = W2(M.s1, -1.4), b = W2(M.s1, 1.4), o1 = W2(M.s1 + 1.1, 1.4), o0 = W2(M.s1 + 1.1, -1.4), z = H(3.5);
+    slab('sill', [[...a.slice(0, 2), z], [...o0.slice(0, 2), z], [...o1.slice(0, 2), z], [...b.slice(0, 2), z]], 0.18, 'plaster2', 'plaster2');
+    railing([[a[0], a[1], z], [o0[0], o0[1], z], [o1[0], o1[1], z], [b[0], b[1], z]], 0, 1.0, 0.12, 'irongrey'); }
+  // south side (garden, lower ground): basement doors and windows, two floors of windows, a terrace
+  for (const f of [0.15, 0.4, 0.65, 0.88]) { onEdge(rM[0], rM[1], f, H(0.6), 1.0, 1.4, 'window', { shutter: 0.35 });
+    onEdge(rM[0], rM[1], f, H(3.9), 1.0, 1.4, 'window', { shutter: 0.35 }); }
+  onEdge(rM[0], rM[1], 0.3, H(-2.6), 2.4, 2.3, 'garage'); onEdge(rM[0], rM[1], 0.7, H(-2.6), 0.9, 2.2, 'door');
+  for (const f of [0.3, 0.7]) { onEdge(rW[0], rW[1], f, H(0.6), 0.9, 1.3, 'window', { shutter: 0.3 });
+    onEdge(rW[0], rW[1], f, H(3.7), 0.9, 1.3, 'window', { shutter: 0.3 }); }
+  { const z = H(0.0), a = W2(1.0, M.t0), b = W2(8.0, M.t0), c = W2(8.0, M.t0 - 2.2), d = W2(1.0, M.t0 - 2.2);
+    slab('sill', [[...a.slice(0, 2), z], [...b.slice(0, 2), z], [...c.slice(0, 2), z], [...d.slice(0, 2), z]], 0.2, 'plaster2', 'plaster2');
+    railing([[a[0], a[1], z], [d[0], d[1], z], [c[0], c[1], z], [b[0], b[1], z]], 0, 1.0, 0.12, 'irongrey');
+    for (const p of [c, d]) box('plaster2', [p[0], p[1], (BASE + z) / 2], [0.3, 0.3, z - BASE], TH); }
+  // chimneys (orthophoto: dark vents on the roof), stone-clad with tiled caps
+  for (const [x, y] of [[864.7, 235.7], [871.4, 238.2], [876.2, 235.0], [870.9, 229.5], [857.7, 231.5]]) {
+    const t = dot(sub([x, y, 0], [OO[0], OO[1], 0]), VV), s = dot(sub([x, y, 0], [OO[0], OO[1], 0]), UU);
+    const R = s < M.s0 ? RW : RM, zr = R.roofZ(t), top = R.ridge + 1.0;
+    box('stone', [x, y, (zr + top) / 2 - 0.2], [0.65, 0.5, top - zr + 0.4], TH);
+    slab('roof', [[x - 0.45, y - 0.38, top + 0.12], [x + 0.45, y - 0.38, top + 0.12], [x + 0.45, y + 0.38, top + 0.12], [x - 0.45, y + 0.38, top + 0.12]], 0.08, 'fascia', 'fascia');
+    for (const [dx, dy] of [[-0.25, -0.2], [0.25, -0.2], [0.25, 0.2], [-0.25, 0.2]]) box('stone', [x + dx, y + dy, top + 0.05], [0.08, 0.08, 0.14]);
+  }
+
+  // ------------------------------------------------------------------ boundary
+  // road side: grey wrought iron on a low concrete wall (Street View),
+  // the line = the traced road edge + 0.35 m; the side lane: white plastered wall with iron on top
+  // and the gate with rough stone pillars and the "67/b" plate; the south side: white wall
+  const ROAD = [[845.6, 247.45, 172.2], [846.93, 247.76, 172.07], [850.82, 248.68, 171.8], [854.67, 249.56, 171.52], [858.57, 250.52, 171.26],
+    [862.52, 251.7, 171.02], [866.33, 252.97, 170.78], [870.03, 254.08, 170.56], [873.8, 255.08, 170.35], [877.65, 256.18, 170.17], [881.4, 257.3, 169.98]];
+  const LANE_N = [[881.4, 257.3, 169.98], [881.7, 254.5, 169.9], [881.95, 252.2, 169.88]];
+  const LANE_S = [[882.35, 248.2, 169.74], [882.7, 244, 170.01], [883.1, 240, 170.26], [883.5, 236, 170.06], [884.0, 232, 169.85], [884.4, 228, 168.92], [884.5, 224.2, 168.43]];
+  const SOUTH = [[884.5, 224.2, 168.43], [877, 224.0, 168.59], [870, 224.2, 168.05], [862, 224.5, 168.37]];
+  function wallRun(line, mat, h, thick, top = 'concrete') {
+    for (let i = 0; i < line.length - 1; i++) {
+      const a = line[i], b = line[i + 1], d = norm([b[0] - a[0], b[1] - a[1], 0]), n = [-d[1], d[0], 0];
+      const P = (p, s, z) => [p[0] + n[0] * s, p[1] + n[1] * s, z];
+      for (const s of [thick / 2, -thick / 2]) face(mat, [P(a, s, a[2] - 0.6), P(b, s, b[2] - 0.6), P(b, s, b[2] + h), P(a, s, a[2] + h)], mul(n, s));
+      face(top, [P(a, thick / 2, a[2] + h), P(b, thick / 2, b[2] + h), P(b, -thick / 2, b[2] + h), P(a, -thick / 2, a[2] + h)], [0, 0, 1]);
+    }
+  }
+  function ironOn(line, h0, h1) {
+    railing(line.map((p) => [p[0], p[1], p[2] + h0]), 0, h1 - h0, 0.12, 'irongrey');
+    for (let i = 0; i < line.length - 1; i++) {                       // spear tips
+      const a = line[i], b = line[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.round(L / 0.12));
+      for (let j = 0; j <= k; j++) { const t = j / k, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, z = a[2] + (b[2] - a[2]) * t + h1;
+        box('irongrey', [x, y, z + 0.06], [0.045, 0.045, 0.12], Math.PI / 4); }
+    }
+  }
+  function stonePillar(p, plateNormal) {
+    box('stone', [p[0], p[1], p[2] + 0.35], [0.5, 0.5, 2.1]);
+    box('concrete', [p[0], p[1], p[2] + 1.45], [0.6, 0.6, 0.1]);
+    box('sill', [p[0], p[1], p[2] + 1.64], [0.3, 0.3, 0.28]);
+    if (plateNormal) { const n = plateNormal, al = [n[1], -n[0], 0], c = [p[0] + n[0] * 0.26, p[1] + n[1] * 0.26, p[2] + 1.05];
+      face('plate', [add3(c, add3(mul(al, -0.12), [0, 0, -0.09])), add3(c, add3(mul(al, 0.12), [0, 0, -0.09])), add3(c, add3(mul(al, 0.12), [0, 0, 0.09])), add3(c, add3(mul(al, -0.12), [0, 0, 0.09]))], n,
+        { u: al, v: [0, 0, 1], o: add3(c, add3(mul(al, -0.12), [0, 0, -0.09])) }); }
+  }
+  wallRun(ROAD, 'concrete', 0.45, 0.22); ironOn(ROAD, 0.45, 1.45);
+  wallRun(LANE_N, 'plaster', 0.9, 0.25); ironOn(LANE_N, 0.9, 1.75);
+  wallRun(LANE_S, 'plaster', 0.9, 0.25); ironOn(LANE_S, 0.9, 1.75);
+  wallRun(SOUTH, 'plaster', 1.2, 0.25);
+  stonePillar(LANE_N[2], [0.99, -0.12, 0]); stonePillar(LANE_S[0]);
+  for (const p of [ROAD[0], ROAD[5], LANE_N[0]]) box('concrete', [p[0], p[1], p[2] + 0.5], [0.35, 0.35, 2.2]);
+  // open grey iron gate swung into the garden, stone steps up from the lane
+  { const a = LANE_N[2], b = LANE_S[0], d = norm(sub(b, a)), n = [-d[1], d[0], 0];
+    const hinge = add3(a, mul(d, 0.3)), tip = add3(hinge, mul(n, -1.5));
+    railing([[hinge[0], hinge[1], a[2]], [tip[0], tip[1], a[2]]], 0.05, 1.6, 0.11, 'irongrey');
+    for (let i = 0; i < 4; i++) { const c = add3(add3(a, mul(sub(b, a), 0.5)), mul(n, -(0.6 + i * 0.35)));
+      box('stone', [c[0], c[1], a[2] + 0.08 + i * 0.16], [3.0, 0.38, 0.16 + i * 0.32], Math.atan2(d[1], d[0])); } }
+
+  // ------------------------------------------------------------------ assemble
+  const MAT = {}, group = new THREE.Group(); group.name = 'house_b';
+  for (const [name, b] of Object.entries(BUF)) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
+    g.computeVertexNormals();
+    const m = new THREE.MeshStandardMaterial({ name, map: TEX[name], roughness: name === 'glass' || name === 'solar' ? 0.25 : 0.9,
+      metalness: name === 'iron' ? 0.3 : 0 });
+    MAT[name] = m;
+    const mesh = new THREE.Mesh(g, m); mesh.name = name; mesh.castShadow = mesh.receiveShadow = true; group.add(mesh);
+  }
+  window.LANDMARK = group;   // export hook (see LANDMARKS.md)
+
+  // ------------------------------------------------------------------ viewer
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding; renderer.shadowMap.enabled = true; document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xc9dbe6);
+  scene.add(group);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ color: 0x7d8a5a, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -1.5; ground.receiveShadow = true; scene.add(ground);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(70, 6.2), new THREE.MeshStandardMaterial({ color: 0x77736c, roughness: 1 }));
+  road.rotation.x = -Math.PI / 2; road.rotation.z = 19 * DEG; road.position.set(0, -0.3, -21.5); scene.add(road);
+  scene.add(new THREE.HemisphereLight(0xdfe9f3, 0x5b5040, 0.75));
+  const sun = new THREE.DirectionalLight(0xfff2dc, 1.15); sun.position.set(30, 40, -10); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30 }); scene.add(sun);
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  const VIEWS = {   // camera at Street View positions (local x, y, eye height)
+    road: [[865.4, 256.7, 172.6], [867, 236, 175]], ne: [[884.7, 251.8, 172.2], [868, 234, 175]],
+    west: [[850, 254, 174], [865, 234, 175]], south: [[880, 205, 175], [866, 232, 173]], air: [[905, 200, 200], [867, 233, 172]] };
+  function view(k) { const [c, tgt] = VIEWS[k]; camera.position.set(...T(c)); controls.target.set(...T(tgt)); controls.update(); }
+  document.querySelectorAll('#views button').forEach((b) => b.onclick = () => view(b.dataset.v));
+  view(new URLSearchParams(location.search).get('view') || 'road');
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+  (function loop() { renderer.render(scene, camera); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

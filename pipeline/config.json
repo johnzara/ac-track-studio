@@ -1,0 +1,160 @@
+{
+  "_comment": "Template for a track's config.json: tools/scaffold.py copies it into builds/<slug>/ and fills in the track's name, map frame, timing, place and detail settings from tracks/<slug>/track.json. Values here are the pipeline's defaults (proven on the reference hill-climb builds); keys starting with _ are notes.",
+  "level_name": "TRACK_SLUG",
+  "crs": "EPSG:32632",
+  "center_utm": [
+    0,
+    0
+  ],
+  "terrain_size_px": 8192,
+  "meters_per_px": 1.0,
+  "dem": {
+    "source_margin_m": 300,
+    "veneto_provinces": [
+      "024",
+      "023"
+    ],
+    "fallback": "copernicus_glo30",
+    "_comment": "veneto_provinces / geodbt_lots: the Veneto province codes and GeoDBT lots the map covers (024 Vicenza, 023 Verona); tools/scaffold.py drops both outside Veneto"
+  },
+  "geodbt_lots": {
+    "LOTTO VICENZA SUD": "vicenza",
+    "LOTTO BIMA VERONA": "verona"
+  },
+  "osm": {
+    "margin_m": 200,
+    "overpass_url": "https://overpass-api.de/api/interpreter"
+  },
+  "roads": {
+    "flatten_terrain": true,
+    "profile_sigma_m": 8.0,
+    "node_spacing_m": 10.0,
+    "default_widths_m": {
+      "motorway": 11.0,
+      "trunk": 9.0,
+      "primary": 8.0,
+      "secondary": 6.0,
+      "tertiary": 4.5,
+      "unclassified": 3.5,
+      "residential": 4.0,
+      "living_street": 3.5,
+      "service": 3.0,
+      "track": 2.8,
+      "pedestrian": 4.0,
+      "motorway_link": 5.0,
+      "trunk_link": 5.0,
+      "primary_link": 5.0,
+      "secondary_link": 5.0,
+      "tertiary_link": 4.5,
+      "path": 2.4,
+      "bridleway": 2.6,
+      "footway": 2.0,
+      "cycleway": 2.4
+    },
+    "drivable_classes": [
+      "motorway",
+      "trunk",
+      "primary",
+      "secondary",
+      "tertiary",
+      "unclassified",
+      "residential",
+      "living_street",
+      "service",
+      "track",
+      "pedestrian",
+      "motorway_link",
+      "trunk_link",
+      "primary_link",
+      "secondary_link",
+      "tertiary_link"
+    ],
+    "offroad_classes": [],
+    "_offroad_comment": "Footpaths are not exported on this map (hill climb); tracks only near the climb (tracks_near_route_m).",
+    "tracks_near_route_m": 1000,
+    "route": "climb",
+    "game_widths": {
+      "_comment": "Narrow hill lanes: drivable widths per class when nothing better is known (the climb gets traced / GeoDBT-measured widths).",
+      "tertiary": 5.5,
+      "tertiary_1lane": 4.5,
+      "secondary": 6.5,
+      "unclassified": 4.0,
+      "residential": 4.5,
+      "living_street": 4.0,
+      "service": 3.2,
+      "track": 3.0,
+      "pedestrian": 4.0
+    },
+    "traced_extra_m": 0.2,
+    "climb_max_grade": 0.21,
+    "_climb_max_grade": "trace_climb.py's limit on the grade over 10 m (reference 0.17). The LiDAR shows 19.8 % over 50 m on the reference climb (6.45 km), so 0.17 flattened real ramps by up to 2 m.",
+    "climb_sv_measured": true,
+    "climb_sv_tol": 0.4,
+    "_climb_sv": "climb_sv_measured: survey widths measured on the Street View road patches (sv_widths.py); the traced width stays within climb_sv_tol below / climb_sv_tol_up above them. climb_max_grade: steepest grade over 10 m the profile may keep (0.21: the reference climb's LiDAR shows 19.8 % over 50 m)",
+    "climb_sv_tol_up": 0.1
+  },
+  "buildings": {
+    "default_height_m": 7.0,
+    "level_height_m": 3.0
+  },
+  "detail_areas": {
+    "_comment": "Measured carriageway widths / crop map for every paved road in these boxes.",
+    "areas": [
+      {
+        "name": "whole map",
+        "bounds": [
+          -4096.0,
+          -4096.0,
+          4096.0,
+          4096.0
+        ],
+        "measured_road_widths": true,
+        "geodbt_crops": true,
+        "shrines": true
+      }
+    ]
+  },
+  "sites": {},
+  "level_title": "Track name",
+  "level_description": "Private recreation of real roads.",
+  "level_authors": "private build (AC Track Studio)",
+  "assetto_corsa": {
+    "_comment": "Assetto Corsa only: the road is widen_m wider than surveyed (less near houses / other legs).",
+    "widen_m": 1,
+    "exposure": 0.5,
+    "_exposure": "ksAmbient / ksDiffuse of every material x this (export_ac.py); an earlier build's 0.7 looked over-exposed in game",
+    "rock_slope": 56,
+    "rock_slope_layer": 48,
+    "rock_tint": [
+      0.8,
+      0.73,
+      0.64
+    ],
+    "_rock": "rock_slope / rock_slope_layer: faces steeper than this (deg) become rock (where the land cover maps rock); rock_tint: colour of the rock photo (dark tint for volcanic soil; grey for limestone)",
+    "ui_credits": "Built from open data (see the build README) and OpenStreetMap (ODbL). Private track.",
+    "ui_tags": [
+      "hillclimb",
+      "point to point",
+      "hills"
+    ],
+    "ui_run": "Uphill",
+    "version": "1.0",
+    "timezone_id": "Europe/Rome",
+    "csp_trees": true,
+    "_csp_trees": "3D trees near the road for Custom Shaders Patch (ac_csp_tree_models.py in Blender, ac_trees.py, ac_csp_trees.py); false = cards only",
+    "pitboxes": 2,
+    "_pitboxes": "Cars that can join (online: MAX_CLIENTS <= this). Slots are on the road before the start line, two staggered columns where it is wide enough (ac_track.py).",
+    "_ui": "ui_description (defaults to level_description), ui_credits, ui_tags, ui_run, version: ui/ui_track.json (export_ac.py)",
+    "_timezone_id": "IANA time zone of the track for CSP's sun ([WEATHER_FX] in data/surfaces.ini); tools/scaffold.py sets it from the country"
+  },
+  "hillclimb": {
+    "start_m": 30,
+    "finish_m": 0,
+    "splits": []
+  },
+  "name_signs": [],
+  "landmark_overrides": [],
+  "ponds": [],
+  "_terrain": "terrain_size_px (a power of two) x meters_per_px: the terrain grid, centred on center_utm in crs; the AC terrain is a triangulation of it, finer near the road (ac_track.py)",
+  "_track": "level_name (folder / kn5 name), level_title, level_description, level_authors: the Assetto Corsa track's name and texts"
+}

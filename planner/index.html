@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AC Track Studio</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true"></span>AC Track Studio</div>
+  <input id="trackName" class="name" placeholder="Track name" autocomplete="off" spellcheck="false">
+  <div class="seg" id="typeToggle" role="group" aria-label="Track type">
+    <button type="button" data-type="point_to_point">Point to point</button>
+    <button type="button" data-type="circuit">Circuit</button>
+  </div>
+  <div class="status" id="status" aria-live="polite"></div>
+  <div class="actions">
+    <button type="button" id="btnNew" class="ghost">New</button>
+    <button type="button" id="btnOpen" class="ghost">Open…</button>
+    <button type="button" id="btnGenerate" class="primary">Generate brief</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav class="tabs" role="tablist">
+      <button type="button" data-tab="route" class="active">Route</button>
+      <button type="button" data-tab="timing">Timing</button>
+      <button type="button" data-tab="detail">Detail</button>
+      <button type="button" data-tab="survey">Survey</button>
+      <button type="button" data-tab="notes">Notes</button>
+    </nav>
+
+    <!-- ROUTE -->
+    <section class="panel active" data-panel="route">
+      <div class="card">
+        <div class="card-head"><h3>Stops</h3><span class="hint" id="loopHint"></span></div>
+        <ol id="wpList" class="wplist"></ol>
+        <div class="row gap">
+          <button type="button" id="btnAddWp">+ Add stop</button>
+          <button type="button" id="btnReverse">Reverse</button>
+          <button type="button" id="btnClearWp" class="ghost danger">Clear</button>
+        </div>
+        <p class="hint">Search a place, type <code>lat, lon</code>, or click the map. Drag the markers; click the route to add a stop on it.</p>
+      </div>
+
+      <details class="card">
+        <summary><h3>Routing rules</h3></summary>
+        <label class="field">Router
+          <select id="optEngine">
+            <option value="fast">Directions service (fast; public roads)</option>
+            <option value="graph">Downloaded OSM roads (race circuits, paths; slower)</option>
+          </select>
+        </label>
+        <label class="field">One-way streets
+          <select id="optOneway">
+            <option value="soft">Legal direction where possible</option>
+            <option value="ignore">Ignore (closed-road event)</option>
+            <option value="strict">Respect strictly</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="optTracks"> Allow tracks (unpaved farm / forest roads)</label>
+        <label class="check"><input type="checkbox" id="optPaths"> Allow paths, footways, pedestrian streets (downloaded roads)</label>
+        <p class="hint">The directions service (Valhalla, as on openstreetmap.org) answers in about a second but does not drive on race circuits (<code>highway=raceway</code>) or footpaths: use the downloaded roads for those. If the service is down, the planner downloads the roads by itself. A stop's leg can also be a <em>direct</em> line for a stretch that is not in OSM.</p>
+      </details>
+
+      <div class="card" id="summaryCard">
+        <div class="card-head"><h3>Route</h3>
+          <span class="hint">elevation: 90 m preview</span>
+        </div>
+        <div id="summary" class="summary empty">No route yet.</div>
+        <div id="streets" class="streets"></div>
+      </div>
+    </section>
+
+    <!-- TIMING -->
+    <section class="panel" data-panel="timing">
+      <div class="card" data-only="point_to_point">
+        <h3>Start and finish</h3>
+        <label class="field">Start line <span class="unit">m from the beginning</span>
+          <div class="row"><input type="range" id="startRange" min="0" step="1"><input type="number" id="startM" min="0" step="1" class="num"></div>
+        </label>
+        <label class="field">Finish line <span class="unit">m from the beginning</span>
+          <div class="row"><input type="range" id="finishRange" min="0" step="1"><input type="number" id="finishM" min="0" step="1" class="num"></div>
+        </label>
+        <p class="hint" id="timedLen"></p>
+      </div>
+      <div class="card" data-only="circuit">
+        <h3>Start / finish and grid</h3>
+        <label class="field">Start / finish line <span class="unit">m along the lap</span>
+          <div class="row"><input type="range" id="sfRange" min="0" step="1"><input type="number" id="sfM" min="0" step="1" class="num"></div>
+        </label>
+        <div class="grid2">
+          <label class="field">Laps<input type="number" id="laps" min="1" max="200" class="num"></label>
+          <label class="field">Grid slots<input type="number" id="gridSlots" min="1" max="60" class="num"></label>
+          <label class="field">Grid spacing <span class="unit">m</span><input type="number" id="gridSpacing" min="4" max="20" step="0.5" class="num"></label>
+          <label class="field">Pit boxes<input type="number" id="pitCount" min="1" max="60" class="num"></label>
+        </div>
+        <label class="field">Pits
+          <select id="pitMode">
+            <option value="grid">On the grid (no pit lane)</option>
+            <option value="area">In an area I pick on the map</option>
+          </select>
+        </label>
+        <div class="row gap" id="pitPickRow"><button type="button" id="btnPickPit">Pick pit area on map</button><span class="hint" id="pitWhere"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3 id="splitsTitle">Splits</h3><button type="button" id="btnAddSplit">+ Add</button></div>
+        <div id="splitList" class="list"></div>
+        <p class="hint">At most two (Assetto Corsa times three sectors). Tip: click the route on the map to put the start, finish or a split there.</p>
+      </div>
+    </section>
+
+    <!-- DETAIL -->
+    <section class="panel" data-panel="detail">
+      <div class="card">
+        <h3>Road</h3>
+        <div class="grid2">
+          <label class="field">Extra AC width <span class="unit">m</span><input type="number" id="d_road_widen_m" min="0" max="3" step="0.1" class="num"></label>
+          <label class="field">Minimum width <span class="unit">m</span><input type="number" id="d_road_min_width_m" min="2.5" max="12" step="0.1" class="num"></label>
+          <label class="field">Crown <span class="unit">%</span><input type="number" id="d_crown_pct" min="0" max="4" step="0.1" class="num"></label>
+        </div>
+        <label class="field">Surface condition
+          <select id="d_surface"><option value="survey">As surveyed per stretch</option><option value="new">New asphalt</option><option value="worn">Worn</option><option value="patched">Patched</option></select>
+        </label>
+        <label class="field">Markings
+          <select id="d_markings"><option value="survey">Only where they really are</option><option value="standard">Full national standard</option><option value="none">None</option></select>
+        </label>
+      </div>
+      <div class="card">
+        <h3>Roadside</h3>
+        <label class="field">Kerbs
+          <select id="d_kerbs"><option value="real">Real-world kerbs only</option><option value="racing">Real + racing kerbs at apexes</option><option value="none">None</option></select>
+        </label>
+        <label class="field" id="racingKerbRow">Racing kerbs on corners tighter than <span class="unit">m radius</span><input type="number" id="d_racing_kerb_max_radius_m" min="20" max="400" step="5" class="num"></label>
+        <label class="field">Guardrails and walls
+          <select id="d_barriers"><option value="survey">Exactly as in reality</option><option value="survey_safety">As in reality + guardrails at big drops</option></select>
+        </label>
+      </div>
+      <div class="card">
+        <h3>Trees and scenery</h3>
+        <div class="grid2">
+          <label class="field">3D trees within <span class="unit">m</span><input type="number" id="d_tree_mesh_radius_m" min="10" max="300" step="5" class="num"></label>
+          <label class="field">Tree cards to <span class="unit">m</span><input type="number" id="d_tree_card_radius_m" min="50" max="3000" step="50" class="num"></label>
+          <label class="field">Full buildings within <span class="unit">m</span><input type="number" id="d_building_detail_radius_m" min="20" max="1000" step="10" class="num"></label>
+          <label class="field">Fine terrain within <span class="unit">m</span><input type="number" id="d_terrain_corridor_m" min="20" max="300" step="5" class="num"></label>
+          <label class="field">Map margin <span class="unit">m</span><input type="number" id="d_map_margin_m" min="200" max="4000" step="100" class="num"></label>
+          <label class="field">Horizon <span class="unit">km</span><input type="number" id="d_horizon_km" min="0" max="80" step="5" class="num"></label>
+        </div>
+        <label class="field">Tree species <span class="unit">blank = typical for the country</span><input type="text" id="d_tree_species" placeholder="e.g. birch, Scots pine, spruce"></label>
+      </div>
+      <div class="card">
+        <h3>Extras</h3>
+        <label class="check"><input type="checkbox" id="d_csp_grass"> CSP 3D grass</label>
+        <label class="check"><input type="checkbox" id="d_rain"> CSP rain</label>
+        <label class="check"><input type="checkbox" id="d_ai_line"> AI line (AI cars, Time Attack)</label>
+        <label class="check"><input type="checkbox" id="d_replay_cameras"> Replay TV cameras</label>
+        <label class="check"><input type="checkbox" id="d_night_lights"> Street lights for night driving</label>
+      </div>
+      <div class="card" id="frameCard">
+        <h3>Map frame</h3>
+        <div id="frameInfo" class="kv empty">Draw a route first.</div>
+      </div>
+    </section>
+
+    <!-- SURVEY -->
+    <section class="panel" data-panel="survey">
+      <div class="card">
+        <h3>Street View</h3>
+        <p class="hint">Opens in Google Maps in its own window: put it beside this one. Google's terms do not allow Street View next to a non-Google map, so it is not embedded here; no API key is needed.</p>
+        <div class="row gap">
+          <button type="button" id="btnSvStart" class="primary">Open at the start</button>
+          <label class="check"><input type="checkbox" id="svBack"> Look back</label>
+        </div>
+        <div class="sv-controls">
+          <button type="button" data-step="-100" title="Back 100 m">◀◀ 100</button>
+          <button type="button" data-step="-25" title="Back 25 m">◀ 25</button>
+          <span id="svPos" class="svpos">not open</span>
+          <button type="button" data-step="25" title="Forward 25 m">25 ▶</button>
+          <button type="button" data-step="100" title="Forward 100 m">100 ▶▶</button>
+        </div>
+        <div class="row gap">
+          <button type="button" id="btnSegFromSv">Segment starts here</button>
+          <button type="button" id="btnSegToSv">Segment ends here</button>
+          <button type="button" id="btnNoteSv">Note here</button>
+        </div>
+        <p class="hint">Keys: <kbd>[</kbd> <kbd>]</kbd> step 25 m, <kbd>{</kbd> <kbd>}</kbd> 100 m. The yellow marker is the survey position.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Survey segments</h3><button type="button" id="btnNewSeg">+ New</button></div>
+        <form id="segForm" class="segform hidden" autocomplete="off">
+          <div class="grid2">
+            <label class="field">From <span class="unit">m</span><div class="row"><input type="number" name="from_m" class="num" step="1"><button type="button" data-use="from_m" title="Use the Street View position">⌖</button></div></label>
+            <label class="field">To <span class="unit">m</span><div class="row"><input type="number" name="to_m" class="num" step="1"><button type="button" data-use="to_m" title="Use the Street View position">⌖</button></div></label>
+            <label class="field">Width <span class="unit">m</span><input type="number" name="width_m" class="num" step="0.1" min="2" max="20"></label>
+            <label class="field">Lanes<input type="number" name="lanes" class="num" min="1" max="6"></label>
+            <label class="field">Edge lines<select name="edge_lines"></select></label>
+            <label class="field">Centre line<select name="centre_line"></select></label>
+            <label class="field">Left side<select name="left"></select></label>
+            <label class="field">Height <span class="unit">m</span><input type="number" name="left_height_m" class="num" step="0.1" min="0" max="10"></label>
+            <label class="field">Right side<select name="right"></select></label>
+            <label class="field">Height <span class="unit">m</span><input type="number" name="right_height_m" class="num" step="0.1" min="0" max="10"></label>
+            <label class="field">Surface<select name="surface"></select></label>
+            <label class="field">Vegetation<input type="text" name="vegetation" placeholder="woods, vineyards…"></label>
+          </div>
+          <label class="field">Notes<textarea name="notes" rows="2" placeholder="What you see: wall material, guardrail ends, kerb shape…"></textarea></label>
+          <div class="row gap"><button type="submit" class="primary">Save segment</button><button type="button" id="btnSegCancel" class="ghost">Cancel</button></div>
+        </form>
+        <div id="segList" class="list"></div>
+      </div>
+    </section>
+
+    <!-- NOTES -->
+    <section class="panel" data-panel="notes">
+      <div class="card">
+        <h3>About the track</h3>
+        <label class="field">Folder name (slug)<input type="text" id="slug" spellcheck="false"></label>
+        <label class="field">Description<textarea id="description" rows="3" placeholder="What this track is, why this road…"></textarea></label>
+        <label class="field">Author<input type="text" id="author"></label>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Annotations</h3><span class="hint">click the map → Note here</span></div>
+        <div id="noteList" class="list"></div>
+      </div>
+      <div class="card">
+        <h3>Notes for Claude</h3>
+        <textarea id="notes" rows="6" placeholder="Anything else: what matters most, what to skip, references, timing of day…"></textarea>
+      </div>
+      <details class="card">
+        <summary><h3>Paths</h3></summary>
+        <label class="field">Studio folder<input type="text" id="setStudio" spellcheck="false"></label>
+        <label class="field">Reference pipeline<input type="text" id="setReference" spellcheck="false"></label>
+        <p class="hint" id="serverHint"></p>
+      </details>
+    </section>
+  </aside>
+
+  <main class="mapwrap">
+    <div id="map"></div>
+    <div id="pickBanner" class="pick-banner hidden"></div>
+    <section id="profile" class="profile">
+      <div class="profile-head">
+        <strong>Elevation</strong><span id="profileInfo" class="hint"></span>
+        <button type="button" id="btnProfileToggle" class="ghost small" aria-label="Collapse the profile">▾</button>
+      </div>
+      <div class="profile-body"><canvas id="profileCanvas"></canvas><div id="profileTip" class="tip hidden"></div></div>
+    </section>
+  </main>
+
+</div>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-head"><h2 id="modalTitle"></h2><button type="button" class="ghost small" id="btnModalClose" aria-label="Close">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="js/geo.js"></script>
+<script src="js/vocab.js"></script>
+<script src="js/osmgraph.js"></script>
+<script src="js/directions.js"></script>
+<script src="js/elevation.js"></script>
+<script src="js/streetview.js"></script>
+<script src="js/brief.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

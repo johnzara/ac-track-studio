@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House A</title>
+<style>
+  :root { --bg: #dfe6ea; --fg: #1d2327; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1b2024; --fg: #e4e8ea; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #info { position: absolute; left: 12px; top: 10px; max-width: 360px; background: color-mix(in srgb, var(--bg) 85%, transparent); padding: 8px 10px; border-radius: 6px; }
+  #views { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  button { font: inherit; padding: 4px 8px; border-radius: 5px; border: 1px solid #8889; background: var(--bg); color: var(--fg); cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="info"><b>House A (example landmark)</b><br>
+Model frame: x = map east − X0, z = −(map north − Y0), y = height − Z0
+(ground floor / road level). Footprints and heights: regional topographic database; roof forms,
+facade details: orthophoto and Street View.</div>
+<div id="views">
+  <button data-v="road">From the road</button><button data-v="ne">From the north-east</button>
+  <button data-v="west">West side</button><button data-v="south">South side</button><button data-v="air">Above</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  // ------------------------------------------------------------------ frame
+  const X0 = 1630, Y0 = 233, Z0 = 173.7;           // map metres -> model origin (anchor in landmarks.json)
+  const T = (p) => [p[0] - X0, p[2] - Z0, -(p[1] - Y0)];  // [x, y(north), h] -> three.js
+  const DEG = Math.PI / 180;
+
+  // ------------------------------------------------------------------ textures
+  function canvas(w, h, draw) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); draw(g, w, h);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+  }
+  function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+  function noise(g, w, h, base, amp, seed, size = 1) {
+    const r = rng(seed); g.fillStyle = base; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < w * h / (size * size) / 2; i++) {
+      const v = (r() - 0.5) * amp; g.fillStyle = v > 0 ? `rgba(255,255,255,${v})` : `rgba(0,0,0,${-v})`;
+      g.fillRect(Math.floor(r() * w), Math.floor(r() * h), size, size);
+    }
+  }
+  const TEX = {
+    plaster: canvas(256, 256, (g, w, h) => { noise(g, w, h, '#ebe7de', 0.07, 7, 2);
+      const r = rng(3); for (let i = 0; i < 10; i++) { g.fillStyle = `rgba(120,110,95,${0.012 + r() * 0.015})`;
+        g.fillRect(r() * w, r() * h, 20 + r() * 60, 3 + r() * 40); } }),
+    roof: canvas(256, 256, (g, w, h) => {           // coppi: 4 courses x 6 tiles per 1 m tile
+      g.fillStyle = '#7b3e26'; g.fillRect(0, 0, w, h); const r = rng(11);
+      for (let row = 0; row < 4; row++) for (let k = 0; k < 6; k++) {
+        const x = k * w / 6, y = row * h / 4, tone = 150 + r() * 45;
+        const grd = g.createLinearGradient(x, 0, x + w / 6, 0);
+        grd.addColorStop(0, `rgb(${tone * 0.62},${tone * 0.30},${tone * 0.18})`);
+        grd.addColorStop(0.5, `rgb(${tone},${tone * 0.52},${tone * 0.33})`);
+        grd.addColorStop(1, `rgb(${tone * 0.58},${tone * 0.28},${tone * 0.17})`);
+        g.fillStyle = grd; g.fillRect(x + 2, y + 3, w / 6 - 4, h / 4 - 4);
+        g.fillStyle = 'rgba(30,15,8,0.55)'; g.fillRect(x, y + h / 4 - 5, w / 6, 5);
+        if (r() < 0.35) { g.fillStyle = 'rgba(60,70,40,0.25)'; g.fillRect(x + 4, y + 6 + r() * 30, 12, 8); }
+      } }),
+    fascia: canvas(64, 64, (g, w, h) => noise(g, w, h, '#3d2b20', 0.12, 5)),
+    timber: canvas(64, 256, (g, w, h) => { noise(g, w, h, '#47301f', 0.10, 9);
+      const r = rng(4); for (let i = 0; i < 26; i++) { g.strokeStyle = `rgba(20,10,5,${0.2 + r() * 0.3})`;
+        g.beginPath(); const x = r() * w; g.moveTo(x, 0); g.lineTo(x + (r() - 0.5) * 6, h); g.stroke(); } }),
+    wood: canvas(128, 256, (g, w, h) => { noise(g, w, h, '#6d4a2f', 0.10, 12);
+      for (let k = 0; k <= 8; k++) { g.fillStyle = 'rgba(30,18,10,0.5)'; g.fillRect(k * w / 8, 0, 2, h); } }),
+    garage: canvas(256, 256, (g, w, h) => { noise(g, w, h, '#5f3f28', 0.08, 13);
+      for (let k = 0; k < 16; k++) { g.fillStyle = 'rgba(25,14,8,0.45)'; g.fillRect(k * w / 16, 0, 3, h); }
+      g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, w, 6); g.fillRect(0, h - 6, w, 6); }),
+    shutter: canvas(128, 128, (g, w, h) => { g.fillStyle = '#6b4a31'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 16; k++) { g.fillStyle = 'rgba(25,14,8,0.5)'; g.fillRect(0, k * h / 16, w, 2);
+        g.fillStyle = 'rgba(255,230,200,0.08)'; g.fillRect(0, k * h / 16 + 2, w, 2); } }),
+    glass: canvas(64, 64, (g, w, h) => { const grd = g.createLinearGradient(0, 0, w, h);
+      grd.addColorStop(0, '#3c474d'); grd.addColorStop(1, '#1d2428'); g.fillStyle = grd; g.fillRect(0, 0, w, h); }),
+    iron: canvas(16, 16, (g, w, h) => { g.fillStyle = '#1c1c1c'; g.fillRect(0, 0, w, h); }),
+    sill: canvas(64, 64, (g, w, h) => noise(g, w, h, '#cdc8bd', 0.12, 21)),
+    concrete: canvas(128, 128, (g, w, h) => noise(g, w, h, '#a8a397', 0.16, 23, 2)),
+    pillar: canvas(64, 64, (g, w, h) => noise(g, w, h, '#86402c', 0.10, 25)),
+    fence: canvas(64, 128, (g, w, h) => { noise(g, w, h, '#6c4529', 0.12, 27);
+      g.fillStyle = 'rgba(20,10,5,0.35)'; for (let k = 0; k < 5; k++) g.fillRect(0, k * h / 5, w, 1); }),
+    solar: canvas(128, 192, (g, w, h) => { g.fillStyle = '#1c2533'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#7d8590'; g.lineWidth = 1; for (let i = 0; i <= 6; i++) { g.beginPath(); g.moveTo(i * w / 6, 0); g.lineTo(i * w / 6, h); g.stroke(); }
+      for (let j = 0; j <= 10; j++) { g.beginPath(); g.moveTo(0, j * h / 10); g.lineTo(w, j * h / 10); g.stroke(); }
+      g.strokeStyle = '#c9ced4'; g.lineWidth = 4; g.strokeRect(0, 0, w, h); }),
+    plate: canvas(128, 96, (g, w, h) => { g.fillStyle = '#f4f2ec'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#1f3c78'; g.lineWidth = 6; g.strokeRect(5, 5, w - 10, h - 10);
+      g.fillStyle = '#1f3c78'; g.font = 'bold 62px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('67', w / 2, h / 2 + 3); }),
+  };
+  // metres per texture repeat (u, v)
+  const TILE = { plaster: [2.5, 2.5], roof: [1, 1], fascia: [1, 1], timber: [0.2, 3], wood: [1, 2.2], garage: [2.4, 2.25],
+    shutter: [1, 1], glass: [1, 1], iron: [1, 1], sill: [1, 1], concrete: [1.5, 1.5], pillar: [0.5, 0.5], fence: [0.1, 1.0],
+    solar: [1.0, 1.65], plate: [0.24, 0.18] };
+
+  // ------------------------------------------------------------------ geometry builder (local metres)
+  const BUF = {};
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (a) => { const l = Math.hypot(...a) || 1; return mul(a, 1 / l); };
+  function newell(pts) { let n = [0, 0, 0];
+    for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length];
+      n = add3(n, [(a[1] - b[1]) * (a[2] + b[2]), (a[2] - b[2]) * (a[0] + b[0]), (a[0] - b[0]) * (a[1] + b[1])]); }
+    return norm(n); }
+  // convex polygon, local coords; `out` = wanted outward direction (flips winding if needed);
+  // uv basis: walls -> u along the wall, v = height; near-horizontal -> x / y; or explicit {u, v}
+  function face(mat, pts, out, basis) {
+    let n = newell(pts);
+    if (out && dot(n, out) < 0) { pts = pts.slice().reverse(); n = mul(n, -1); }
+    let u, v;
+    if (basis) { u = basis.u; v = basis.v; }
+    else if (Math.abs(n[2]) > 0.85) { u = [1, 0, 0]; v = [0, 1, 0]; }
+    else { u = norm([-n[1], n[0], 0]); v = [0, 0, 1]; }
+    const [tu, tv] = TILE[mat] || [1, 1], o = basis && basis.o ? basis.o : [0, 0, 0];
+    const b = BUF[mat] ??= { p: [], n: [], uv: [] };
+    const tn = [n[0], n[2], -n[1]], push = (p) => { b.p.push(...T(p)); b.n.push(...tn);
+      const d = sub(p, o); b.uv.push(dot(d, u) / tu, dot(d, v) / tv); };
+    for (let i = 1; i < pts.length - 1; i++) { push(pts[0]); push(pts[i]); push(pts[i + 1]); }
+  }
+  // oriented box: centre c [x,y,z], size [sx (along yaw), sy, sz], yaw (rad from +x), optional per-face material map
+  function box(mat, c, s, yaw = 0, mats = {}) {
+    const ca = Math.cos(yaw), sa = Math.sin(yaw), ax = [ca, sa, 0], ay = [-sa, ca, 0], az = [0, 0, 1];
+    const P = (i, j, k) => add3(add3(add3(c, mul(ax, i * s[0] / 2)), mul(ay, j * s[1] / 2)), mul(az, k * s[2] / 2));
+    const F = [[ax, [P(1, -1, -1), P(1, 1, -1), P(1, 1, 1), P(1, -1, 1)], 'px'], [mul(ax, -1), [P(-1, -1, -1), P(-1, 1, -1), P(-1, 1, 1), P(-1, -1, 1)], 'nx'],
+      [ay, [P(-1, 1, -1), P(1, 1, -1), P(1, 1, 1), P(-1, 1, 1)], 'py'], [mul(ay, -1), [P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1)], 'ny'],
+      [az, [P(-1, -1, 1), P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1)], 'pz'], [mul(az, -1), [P(-1, -1, -1), P(1, -1, -1), P(1, 1, -1), P(-1, 1, -1)], 'nz']];
+    for (const [o, q, key] of F) face(mats[key] || mat, q, o);
+  }
+  // box between two points (beams, rails, posts), square section w x h
+  function beam(mat, a, b, w, h = w) {
+    const d = sub(b, a), L = Math.hypot(...d), yaw = Math.atan2(d[1], d[0]);
+    const pitch = Math.atan2(d[2], Math.hypot(d[0], d[1]));
+    const ax = norm(d), side = norm(Math.abs(ax[2]) > 0.99 ? [1, 0, 0] : [-Math.sin(yaw), Math.cos(yaw), 0]), up = cross(ax, side);
+    const c = mul(add3(a, b), 0.5);
+    const P = (i, j, k) => add3(add3(add3(c, mul(ax, i * L / 2)), mul(side, j * w / 2)), mul(up, k * h / 2));
+    const quads = [[P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1)], [P(-1, 1, -1), P(1, 1, -1), P(1, 1, 1), P(-1, 1, 1)],
+      [P(-1, -1, 1), P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1)], [P(-1, -1, -1), P(1, -1, -1), P(1, 1, -1), P(-1, 1, -1)],
+      [P(-1, -1, -1), P(-1, 1, -1), P(-1, 1, 1), P(-1, -1, 1)], [P(1, -1, -1), P(1, 1, -1), P(1, 1, 1), P(1, -1, 1)]];
+    for (const q of quads) { const n = newell(q); const cc = q.reduce((s, p) => add3(s, mul(p, 0.25)), [0, 0, 0]);
+      face(mat, q, sub(cc, c)); }
+  }
+  // vertical walls of a CCW footprint ring from z0 to ztop(x, y)
+  function walls(mat, ring, z0, ztop) {
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], b = ring[(i + 1) % ring.length], out = [b[1] - a[1], -(b[0] - a[0]), 0];
+      const ta = ztop(a[0], a[1]), tb = ztop(b[0], b[1]);
+      face(mat, [[a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], tb], [a[0], a[1], ta]], out);
+    }
+  }
+  // thick sloped slab from 4 top corners (any order around), thickness t below; top/side/under materials
+  function slab(top, corners, t, side = 'fascia', under = 'plaster', basis) {
+    const c = corners.reduce((s, p) => add3(s, mul(p, 0.25)), [0, 0, 0]);
+    const n = newell(corners), up = n[2] < 0 ? mul(n, -1) : n;
+    const low = corners.map((p) => sub(p, mul(up, t)));
+    face(top, corners, up, basis); face(under, low, mul(up, -1), basis);
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4;
+      const q = [corners[i], corners[j], low[j], low[i]], m = q.reduce((s, p) => add3(s, mul(p, 0.25)), [0, 0, 0]);
+      face(side, q, sub(m, c)); }
+  }
+  // a window / door set into a wall: wall plane point o, outward normal n (horizontal), centre along-wall s, sill height z
+  function opening(o, n, s, z, w, h, kind = 'window', opts = {}) {
+    const along = [n[1], -n[0], 0], P = (ds, dz, dn) => add3(add3(add3(o, mul(along, s + ds)), [0, 0, z + dz]), mul(n, dn));
+    const inset = 0.03;   // openings are laid on the wall surface (walls are not cut)
+    if (kind === 'garage') { face('garage', [P(-w / 2, 0, inset), P(w / 2, 0, inset), P(w / 2, h, inset), P(-w / 2, h, inset)], n,
+        { u: along, v: [0, 0, 1], o: P(-w / 2, 0, 0) }); frame(P, w, h, inset, along); return; }
+    if (kind === 'door') {
+      face('wood', [P(-w / 2, 0, inset), P(w / 2, 0, inset), P(w / 2, h * 0.72, inset), P(-w / 2, h * 0.72, inset)], n, { u: along, v: [0, 0, 1], o: P(-w / 2, 0, 0) });
+      face('glass', [P(-w / 2, h * 0.72, inset), P(w / 2, h * 0.72, inset), P(w / 2, h, inset), P(-w / 2, h, inset)], n);
+      for (let k = 1; k < 6; k++) beam('iron', P(-w / 2 + k * w / 6, h * 0.72, inset + 0.03), P(-w / 2 + k * w / 6, h - 0.02, inset + 0.03), 0.02);
+      beam('iron', P(-w / 2, h * 0.86, inset + 0.03), P(w / 2, h * 0.86, inset + 0.03), 0.02);
+      frame(P, w, h, inset, along); return; }
+    // window: glass, roller shutter part-way down, shutter box line, stone sill
+    const sh = opts.shutter ?? 0.45;
+    face('glass', [P(-w / 2, 0, inset), P(w / 2, 0, inset), P(w / 2, h * (1 - sh), inset), P(-w / 2, h * (1 - sh), inset)], n);
+    if (sh > 0) face('shutter', [P(-w / 2, h * (1 - sh), inset + 0.02), P(w / 2, h * (1 - sh), inset + 0.02), P(w / 2, h, inset + 0.02), P(-w / 2, h, inset + 0.02)], n,
+      { u: along, v: [0, 0, 1], o: P(-w / 2, 0, 0) });
+    if (h > 1.6 && opts.mullion !== false) beam('wood', P(0, 0, inset + 0.01), P(0, h * (1 - sh), inset + 0.01), 0.05);
+    frame(P, w, h, inset, along);
+    sill(P, w);
+    if (opts.grille) for (let k = 1; k < 5; k++) beam('iron', P(-w / 2 + k * w / 5, 0.02, 0.05), P(-w / 2 + k * w / 5, h - 0.02, 0.05), 0.018);
+  }
+  function frame(P, w, h, inset, along) {   // slim surround proud of the wall
+    const f = 0.07, d = inset + 0.03;
+    beam('sill', P(-w / 2 - f / 2, 0, d), P(-w / 2 - f / 2, h + f, d), f, 0.06);
+    beam('sill', P(w / 2 + f / 2, 0, d), P(w / 2 + f / 2, h + f, d), f, 0.06);
+    beam('sill', P(-w / 2 - f, h + f / 2, d), P(w / 2 + f, h + f / 2, d), f, 0.06);
+  }
+  function sill(P, w) {
+    const a = P(-w / 2 - 0.05, -0.05, 0.06), b = P(w / 2 + 0.05, -0.05, 0.06), c = P(w / 2 + 0.05, -0.05, -0.02), d = P(-w / 2 - 0.05, -0.05, -0.02);
+    slab('sill', [add3(d, [0, 0, 0.05]), add3(c, [0, 0, 0.05]), add3(b, [0, 0, 0.05]), add3(a, [0, 0, 0.05])], 0.05, 'sill', 'sill');
+  }
+  function railing(path, z0, z1, spacing = 0.12, mat = 'iron') {     // wrought-iron balustrade along a polyline
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.round(L / spacing));
+      const za = a[2] ?? 0, zb = b[2] ?? 0;
+      beam(mat, [a[0], a[1], za + z1], [b[0], b[1], zb + z1], 0.045);
+      beam(mat, [a[0], a[1], za + z0 + 0.06], [b[0], b[1], zb + z0 + 0.06], 0.03);
+      for (let j = 0; j <= k; j++) { const t = j / k, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, z = za + (zb - za) * t;
+        beam(mat, [x, y, z + z0], [x, y, z + z1], 0.018); }
+    }
+  }
+
+  // an opening at fraction f along the footprint edge a->b (ring CCW: outward = right of a->b)
+  function onEdge(a, b, f, z, w, h, kind = 'window', o = {}) {
+    const nn = norm([b[1] - a[1], -(b[0] - a[0]), 0]), p = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, 0];
+    const along = [nn[1], -nn[0], 0], s = dot(p, along);
+    opening(sub(p, mul(along, s)), nn, s, z, w, h, kind, o);
+  }
+
+  // ------------------------------------------------------------------ the house
+  const H = (h) => Z0 + h;          // heights relative to the ground floor (road level)
+  const BASE = H(-2.0);             // walls run into the ground (terrain falls ~1.3 m to the south)
+
+  // main gabled block "C" (GeoDBT 8.5 m volume): gable to the road, ridge north-south
+  const C = { x0: 1627.6, x1: 1633.9, y0: 227.6, y1: 238.4, eave: H(7.2), pitch: 41.5 * DEG };
+  C.xm = (C.x0 + C.x1) / 2; C.ridge = C.eave + (C.xm - C.x0) * Math.tan(C.pitch);
+  const roofZ = (x) => C.eave + (C.xm - C.x0 - Math.abs(x - C.xm)) * Math.tan(C.pitch);
+  const LOG = { xa: 1628.25, xb: 1633.25, floor: H(5.5), depth: 1.35 };   // top-floor loggia
+  // walls: east, south, west full height; north wall up to the loggia floor
+  face('plaster', [[C.x1, C.y0, BASE], [C.x1, C.y1, BASE], [C.x1, C.y1, C.eave], [C.x1, C.y0, C.eave]], [1, 0, 0]);
+  face('plaster', [[C.x0, C.y0, BASE], [C.x0, C.y1, BASE], [C.x0, C.y1, C.eave], [C.x0, C.y0, C.eave]], [-1, 0, 0]);
+  face('plaster', [[C.x0, C.y0, BASE], [C.x1, C.y0, BASE], [C.x1, C.y0, C.eave], [C.x0, C.y0, C.eave]], [0, -1, 0]);
+  face('plaster', [[C.x0, C.y0, C.eave], [C.x1, C.y0, C.eave], [C.xm, C.y0, C.ridge]], [0, -1, 0]);
+  face('plaster', [[C.x0, C.y1, BASE], [C.x1, C.y1, BASE], [C.x1, C.y1, LOG.floor], [C.x0, C.y1, LOG.floor]], [0, 1, 0]);
+  // north facade above the loggia floor: piers either side, recessed back wall, open gable with timber posts
+  for (const [a, b] of [[C.x0, LOG.xa], [LOG.xb, C.x1]]) {
+    const pts = [[a, C.y1, LOG.floor], [b, C.y1, LOG.floor], [b, C.y1, roofZ(b)], [a, C.y1, roofZ(a)]];
+    if (a < C.xm && b > C.xm) pts.splice(3, 0, [C.xm, C.y1, C.ridge]);
+    face('plaster', pts, [0, 1, 0]);
+  }
+  const yb = C.y1 - LOG.depth;
+  face('plaster', [[LOG.xa, yb, LOG.floor], [LOG.xb, yb, LOG.floor], [LOG.xb, yb, roofZ(LOG.xb)], [C.xm, yb, C.ridge], [LOG.xa, yb, roofZ(LOG.xa)]], [0, 1, 0]);
+  face('plaster', [[LOG.xa, yb, LOG.floor], [LOG.xa, C.y1, LOG.floor], [LOG.xa, C.y1, roofZ(LOG.xa)], [LOG.xa, yb, roofZ(LOG.xa)]], [1, 0, 0]);
+  face('plaster', [[LOG.xb, yb, LOG.floor], [LOG.xb, C.y1, LOG.floor], [LOG.xb, C.y1, roofZ(LOG.xb)], [LOG.xb, yb, roofZ(LOG.xb)]], [-1, 0, 0]);
+  slab('sill', [[LOG.xa, yb, LOG.floor], [LOG.xb, yb, LOG.floor], [LOG.xb, C.y1 + 0.15, LOG.floor], [LOG.xa, C.y1 + 0.15, LOG.floor]], 0.2, 'fascia', 'plaster');
+  // loggia: wooden balustrade, two windows behind, four dark timber posts up into the gable
+  face('wood', [[LOG.xa, C.y1 - 0.05, LOG.floor], [LOG.xb, C.y1 - 0.05, LOG.floor], [LOG.xb, C.y1 - 0.05, LOG.floor + 1.0], [LOG.xa, C.y1 - 0.05, LOG.floor + 1.0]], [0, 1, 0],
+    { u: [1, 0, 0], v: [0, 0, 1], o: [LOG.xa, 0, LOG.floor] });
+  face('wood', [[LOG.xa, C.y1 - 0.11, LOG.floor], [LOG.xb, C.y1 - 0.11, LOG.floor], [LOG.xb, C.y1 - 0.11, LOG.floor + 1.0], [LOG.xa, C.y1 - 0.11, LOG.floor + 1.0]], [0, -1, 0]);
+  beam('timber', [LOG.xa, C.y1 - 0.08, LOG.floor + 1.02], [LOG.xb, C.y1 - 0.08, LOG.floor + 1.02], 0.1, 0.06);
+  for (const x of [1629.2, 1632.3]) opening([0, yb, 0], [0, 1, 0], x, LOG.floor + 0.05, 1.0, 1.9, 'window', { shutter: 0.25 });
+  for (const dx of [-1.55, -0.5, 0.5, 1.55]) {
+    const x = C.xm + dx;
+    beam('timber', [x, C.y1 + 0.02, LOG.floor + 1.05], [x, C.y1 + 0.02, roofZ(x) - 0.05], 0.17);
+  }
+  // first floor: balcony with wrought-iron railing, door with arched grille, lamp, diamond ornament
+  const BAL = { xa: 1628.0, xb: 1633.3, z: H(2.75), d: 1.15 };
+  slab('sill', [[BAL.xa, C.y1, BAL.z], [BAL.xb, C.y1, BAL.z], [BAL.xb, C.y1 + BAL.d, BAL.z], [BAL.xa, C.y1 + BAL.d, BAL.z]], 0.18, 'plaster', 'plaster');
+  railing([[BAL.xa, C.y1, BAL.z], [BAL.xa, C.y1 + BAL.d, BAL.z], [BAL.xb - 1.0, C.y1 + BAL.d, BAL.z]], 0, 1.0);
+  // (Street View: door at the east end where the stair arrives, lamp and diamond to its west)
+  opening([0, C.y1, 0], [0, 1, 0], 1632.4, BAL.z, 1.0, 2.25, 'door');
+  box('iron', [1631.0, C.y1 + 0.1, BAL.z + 1.75], [0.12, 0.2, 0.12]);
+  box('sill', [1631.0, C.y1 + 0.2, BAL.z + 1.85], [0.18, 0.18, 0.2]);
+  face('glass', [[1630.1, C.y1 + 0.03, BAL.z + 1.35], [1630.42, C.y1 + 0.03, BAL.z + 1.67], [1630.1, C.y1 + 0.03, BAL.z + 1.99], [1629.78, C.y1 + 0.03, BAL.z + 1.67]], [0, 1, 0]);
+  // ground floor: garage door under the east half, small barred window to the west
+  opening([0, C.y1, 0], [0, 1, 0], 1631.6, H(0), 2.4, 2.25, 'garage');
+  opening([0, C.y1, 0], [0, 1, 0], 1629.0, H(1.0), 0.6, 0.6, 'window', { shutter: 0, grille: true, mullion: false });
+  // C side/back windows
+  opening([C.x0, 0, 0], [-1, 0, 0], 231.0, H(5.6), 0.9, 1.3, 'window');
+  for (const x of [1629.6]) { opening([0, C.y0, 0], [0, -1, 0], -x, H(2.9), 1.0, 1.4, 'window');
+    opening([0, C.y0, 0], [0, -1, 0], -x, H(5.6), 0.9, 1.2, 'window'); }
+  // C roof: two planes with overhangs, dark fascia, plastered soffit
+  const oe = 0.6, og = 0.55, t = 0.2, slope = Math.tan(C.pitch);
+  const eW = C.x0 - oe, eE = C.x1 + oe, zE = C.eave - oe * slope + 0.18;
+  const RW = [[eW, C.y0 - og, zE], [C.xm, C.y0 - og, C.ridge + 0.18], [C.xm, C.y1 + og, C.ridge + 0.18], [eW, C.y1 + og, zE]];
+  const RE = [[C.xm, C.y0 - og, C.ridge + 0.18], [eE, C.y0 - og, zE], [eE, C.y1 + og, zE], [C.xm, C.y1 + og, C.ridge + 0.18]];
+  const basisW = { u: [0, 1, 0], v: norm([1, 0, slope]), o: [eW, 0, zE] }, basisE = { u: [0, -1, 0], v: norm([-1, 0, slope]), o: [eE, 0, zE] };
+  slab('roof', RW, t, 'fascia', 'plaster', basisW); slab('roof', RE, t, 'fascia', 'plaster', basisE);
+  beam('roof', [C.xm, C.y0 - og, C.ridge + 0.24], [C.xm, C.y1 + og, C.ridge + 0.24], 0.26, 0.12);
+  // solar panels on the east plane (orthophoto): 2 rows up the slope x 4 across
+  { const v = norm([-1, 0, slope]), nrm = norm([slope, 0, 1]);
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 4; k++) {
+      const s0 = 0.55 + r * 1.68, y0 = 230.2 + k * 1.03;
+      const o = add3(add3([eE, y0, zE], mul(v, s0)), mul(nrm, 0.07));
+      const q = [o, add3(o, [0, 1.0, 0]), add3(add3(o, [0, 1.0, 0]), mul(v, 1.65)), add3(o, mul(v, 1.65))];
+      slab('solar', q, 0.04, 'sill', 'iron', { u: [0, 1, 0], v, o });
+    } }
+
+  // west wing "W" (GeoDBT 7.9 m): mono-pitch roof falling to the south, chimney at the north-west
+  const W = { x0: 1623.3, x1: C.x0, y0: 227.8, y1: 238.9, zn: H(6.9), zs: H(5.2) };
+  const wTop = (x, y) => W.zs + (y - W.y0) / (W.y1 - W.y0) * (W.zn - W.zs);
+  walls('plaster', [[W.x0, W.y0], [W.x1, W.y0], [W.x1, W.y1], [W.x0, W.y1]], BASE, wTop);
+  { const ow = 0.45, k = (W.zn - W.zs) / (W.y1 - W.y0);
+    const q = [[W.x0 - ow, W.y0 - ow, W.zs - ow * k + 0.18], [W.x1, W.y0 - ow, W.zs - ow * k + 0.18], [W.x1, W.y1 + ow, W.zn + ow * k + 0.18], [W.x0 - ow, W.y1 + ow, W.zn + ow * k + 0.18]];
+    slab('roof', q, 0.2, 'fascia', 'plaster', { u: [1, 0, 0], v: norm([0, 1, k]), o: q[0] }); }
+  box('plaster', [1624.1, 237.7, H(7.6)], [0.65, 0.55, 2.2]);
+  slab('roof', [[1623.65, 237.3, H(8.8)], [1624.55, 237.3, H(8.8)], [1624.55, 238.1, H(8.8)], [1623.65, 238.1, H(8.8)]], 0.08, 'fascia', 'fascia');
+  opening([0, W.y1, 0], [0, 1, 0], 1625.5, H(0.35), 1.9, 1.45, 'window', { shutter: 1.0, mullion: false });   // street-level roller shutter
+  opening([W.x0, 0, 0], [-1, 0, 0], 237.1, H(2.75), 0.95, 2.2, 'window', { shutter: 0.3 });             // French window + balconette
+  railing([[W.x0, 236.45, H(2.75)], [W.x0 - 0.55, 236.45, H(2.75)], [W.x0 - 0.55, 237.75, H(2.75)], [W.x0, 237.75, H(2.75)]], 0, 1.0);
+  slab('sill', [[W.x0 - 0.6, 236.4, H(2.75)], [W.x0, 236.4, H(2.75)], [W.x0, 237.8, H(2.75)], [W.x0 - 0.6, 237.8, H(2.75)]], 0.14, 'plaster', 'plaster');
+  box('sill', [W.x0 - 0.18, 238.35, H(4.0)], [0.32, 0.8, 0.55]);                                         // AC unit
+  for (const y of [230.4, 233.4]) opening([W.x0, 0, 0], [-1, 0, 0], y, H(3.2), 1.0, 1.35, 'window');
+  for (const x of [1624.5, 1626.4]) opening([0, W.y0, 0], [0, -1, 0], -x, H(3.0), 0.9, 1.2, 'window');
+
+  // east wing "E" (GeoDBT 7.4 m, turned 11 deg): mono-pitch roof falling to the east
+  const E = [[1631.8, 227.5], [1636.9, 226.3], [1638.8, 236.0], [1633.9, 236.9]];   // CCW
+  const eAx = norm([E[1][0] - E[0][0], E[1][1] - E[0][1], 0]), eW0 = E[0], eWidth = Math.hypot(E[1][0] - E[0][0], E[1][1] - E[0][1]);
+  const eTop = (x, y) => { const s = (x - eW0[0]) * eAx[0] + (y - eW0[1]) * eAx[1]; return H(6.9) - s / eWidth * 0.85; };
+  walls('plaster', E, BASE, eTop);
+  { const ov = 0.45, ax = eAx, ay = [-ax[1], ax[0], 0], k = 0.85 / eWidth;
+    const P = (s, r) => [E[0][0] + ax[0] * s + ay[0] * r, E[0][1] + ax[1] * s + ay[1] * r];
+    const len = Math.hypot(E[3][0] - E[0][0], E[3][1] - E[0][1]);
+    const q = [[...P(0.6, -ov), H(6.9) - 0.6 * k + 0.18], [...P(eWidth + ov, -ov), H(6.9) - (eWidth + ov) * k + 0.18],
+      [...P(eWidth + ov, len + ov), H(6.9) - (eWidth + ov) * k + 0.18], [...P(0.6, len + ov), H(6.9) - 0.6 * k + 0.18]];
+    slab('roof', q, 0.2, 'fascia', 'plaster', { u: ay, v: norm([-ax[0], -ax[1], k]), o: q[1] }); }
+  { const n = norm([E[3][1] - E[2][1], -(E[3][0] - E[2][0]), 0]);                               // north face
+    const n2 = norm([E[2][1] - E[1][1], -(E[2][0] - E[1][0]), 0]);                              // east face
+    const n3 = norm([E[1][1] - E[0][1], -(E[1][0] - E[0][0]), 0]);                              // south face
+    const at = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, 0];
+    // opening() places along the wall direction [n.y, -n.x] from the plane point
+    const put = (a, b, nn, f, z, w, h, kind = 'window', o = {}) => { const p = at(a, b, f), along = [nn[1], -nn[0], 0];
+      const s = p[0] * along[0] + p[1] * along[1], o0 = sub(p, mul(along, s)); opening(o0, nn, s, z, w, h, kind, o); };
+    put(E[2], E[3], n, 0.45, H(2.95), 1.0, 1.35); put(E[2], E[3], n, 0.45, H(0.1), 0.9, 1.1);
+    put(E[1], E[2], n2, 0.25, H(2.95), 1.0, 1.35); put(E[1], E[2], n2, 0.7, H(2.95), 1.0, 1.35);
+    put(E[1], E[2], n2, 0.25, H(0.0), 1.0, 1.3); put(E[1], E[2], n2, 0.7, H(-0.1), 0.95, 2.2, 'door');
+    put(E[0], E[1], n3, 0.5, H(2.95), 1.0, 1.35); put(E[0], E[1], n3, 0.5, H(-0.9), 1.0, 1.3);
+    box('sill', [...add3(at(E[1], E[2], 0.47), mul(n2, 0.2)).slice(0, 2), H(4.6)], [0.32, 0.85, 0.55], Math.atan2(n2[1], n2[0]));
+  }
+  // external stair along E's north wall up to the balcony (red-brown painted concrete, iron railing)
+  { const z0 = H(0), z1 = BAL.z, run = 4.3, x1 = 1633.6, steps = 14, yN = 237.95, yS = 236.95;
+    for (let i = 0; i < steps; i++) { const xa = x1 + run * i / steps, xb = x1 + run * (i + 1) / steps, z = z1 - (z1 - z0) * (i + 1) / steps + (z1 - z0) / steps;
+      box('concrete', [(xa + xb) / 2, (yN + yS) / 2, z - 0.09], [xb - xa + 0.02, yN - yS, 0.18]); }
+    slab('pillar', [[x1, yS, z1 - 0.2], [x1 + run, yS, z0 - 0.2], [x1 + run, yN, z0 - 0.2], [x1, yN, z1 - 0.2]], 0.16, 'pillar', 'pillar');
+    slab('sill', [[C.x1 - 0.4, yS, z1], [x1, yS, z1], [x1, C.y1 + BAL.d, z1], [C.x1 - 0.4, C.y1 + BAL.d, z1]], 0.18, 'plaster', 'plaster');
+    box('pillar', [x1 - 0.1, C.y1 + BAL.d - 0.15, (z0 + z1) / 2 - 0.2], [0.25, 0.25, z1 - z0 - 0.2]);
+    railing([[x1 + run, yN, z0], [x1, yN, z1], [x1, C.y1 + BAL.d, z1], [BAL.xb - 1.0, C.y1 + BAL.d, z1]], 0, 1.0); }
+
+  // single-storey annex (GeoDBT 3.5 m), tiled lean-to roofs falling outwards
+  const A = [[1617.0, 225.1], [1630.2, 224.6], [1630.8, 227.6], [1623.3, 227.9], [1623.3, 234.2], [1620.7, 234.6], [1620.5, 232.2], [1617.2, 232.2]];
+  walls('plaster', A, BASE, (x, y) => (x < 1623.25 ? H(2.8) + (x - 1617.0) / 6.3 * 0.5 : H(2.8) + (y - 224.6) / 3.3 * 0.45));
+  slab('roof', [[1616.5, 224.15, H(2.72)], [1623.3, 224.15, H(3.36)], [1623.3, 235.05, H(3.36)], [1616.5, 235.05, H(2.72)]], 0.18, 'fascia', 'plaster',
+    { u: [0, 1, 0], v: norm([1, 0, 0.094]), o: [1616.5, 224.15, H(2.72)] });
+  slab('roof', [[1623.3, 224.1, H(2.74)], [1631.3, 224.1, H(2.74)], [1631.3, 227.8, H(3.36)], [1623.3, 227.8, H(3.36)]], 0.18, 'fascia', 'plaster',
+    { u: [1, 0, 0], v: norm([0, 1, 0.167]), o: [1623.3, 224.1, H(2.74)] });
+  for (const y of [227.6, 230.6]) opening([1617.05, 0, 0], [-1, 0, 0], y, H(0.7), 0.9, 1.15, 'window', { shutter: 0, grille: true, mullion: false });
+  for (const f of [0.22, 0.72]) onEdge(A[0], A[1], f, H(0.4), 1.0, 1.2, 'window', { shutter: 0.3 });
+  opening([0, 232.2, 0], [0, 1, 0], 1618.85, H(-0.1), 0.9, 2.15, 'door');
+
+  // ------------------------------------------------------------------ boundary: brown picket fence on a low wall, red-brown pillars, gate
+  // fence line = the main road's south edge (traced from the orthophoto) + 0.35 m, and the side lane's east edge
+  const FENCE = [[1609.6, 230.6, 174.66], [1614.6, 234.9, 174.68], [1617.4, 237.9, 174.70], [1622.41, 239.67, 174.28], [1626.26, 241.11, 173.92],
+    [1629.85, 242.47, 173.56], [1631.0, 242.88, 173.45]];
+  const FENCE2 = [[1634.6, 244.14, 173.12], [1637.36, 245.07, 172.87], [1641.13, 246.25, 172.55], [1644.98, 247.29, 172.23]];
+  function fence(line, plateAtEnd = false) {
+    for (let i = 0; i < line.length - 1; i++) {
+      const a = line[i], b = line[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), dir = [(b[0] - a[0]) / L, (b[1] - a[1]) / L, 0];
+      const yaw = Math.atan2(dir[1], dir[0]);
+      // low concrete wall following the ground, buried 0.6 m
+      const n = [-dir[1], dir[0], 0], hw = 0.1, P = (p, s, z) => [p[0] + n[0] * s, p[1] + n[1] * s, z];
+      for (const s of [hw, -hw]) face('concrete', [P(a, s, a[2] - 0.6), P(b, s, b[2] - 0.6), P(b, s, b[2] + 0.4), P(a, s, a[2] + 0.4)], mul(n, s));
+      face('concrete', [P(a, hw, a[2] + 0.4), P(b, hw, b[2] + 0.4), P(b, -hw, b[2] + 0.4), P(a, -hw, a[2] + 0.4)], [0, 0, 1]);
+      // rails + pickets
+      for (const h of [0.62, 1.15]) beam('fence', P(a, -0.04, a[2] + h), P(b, -0.04, b[2] + h), 0.04, 0.07);
+      const k = Math.round(L / 0.135);
+      for (let j = 0; j < k; j++) { const t = (j + 0.5) / k, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, z = a[2] + (b[2] - a[2]) * t;
+        box('fence', [x + n[0] * 0.01, y + n[1] * 0.01, z + 0.4 + 0.52], [0.075, 0.022, 1.04], yaw);
+        face('fence', [[x - dir[0] * 0.0375 + n[0] * 0.021, y - dir[1] * 0.0375 + n[1] * 0.021, z + 1.44], [x + dir[0] * 0.0375 + n[0] * 0.021, y + dir[1] * 0.0375 + n[1] * 0.021, z + 1.44],
+          [x + n[0] * 0.021, y + n[1] * 0.021, z + 1.52]], n); }
+    }
+    pillar(line[0]); pillar(line[line.length - 1], plateAtEnd);
+  }
+  function pillar(p, plate = false) {
+    box('pillar', [p[0], p[1], p[2] + 0.2], [0.42, 0.42, 2.0]);
+    box('concrete', [p[0], p[1], p[2] + 1.25], [0.52, 0.52, 0.1]);
+    box('pillar', [p[0], p[1], p[2] + 1.36], [0.3, 0.3, 0.12]);
+    if (plate) { const n = norm([-0.35, 0.94, 0]); face('plate', [[p[0] - 0.12 + n[0] * 0.215, p[1] + n[1] * 0.215 - 0.045, p[2] + 0.92], [p[0] + 0.12 + n[0] * 0.215, p[1] + n[1] * 0.215 + 0.045, p[2] + 0.92],
+      [p[0] + 0.12 + n[0] * 0.215, p[1] + n[1] * 0.215 + 0.045, p[2] + 1.1], [p[0] - 0.12 + n[0] * 0.215, p[1] + n[1] * 0.215 - 0.045, p[2] + 1.1]], n,
+      { u: norm([0.94, 0.35, 0]), v: [0, 0, 1], o: [p[0] - 0.12, p[1] - 0.045, p[2] + 0.92] }); }
+  }
+  fence(FENCE, true); fence(FENCE2); pillar([1617.4, 237.9, 174.70]);
+  // car gate in front of the garage: brown wooden sliding gate, standing open behind the eastern fence
+  { const a = FENCE2[0], d = norm([FENCE2[1][0] - a[0], FENCE2[1][1] - a[1], 0]), yaw = Math.atan2(d[1], d[0]);
+    const c = [a[0] + d[0] * 2.1 + d[1] * 0.25, a[1] + d[1] * 2.1 - d[0] * 0.25, a[2] + 0.75];
+    box('fence', c, [3.6, 0.05, 1.3], yaw, { py: 'wood', ny: 'wood' }); }
+
+  // ------------------------------------------------------------------ assemble
+  const MAT = {}, group = new THREE.Group(); group.name = 'house_a';
+  for (const [name, b] of Object.entries(BUF)) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
+    g.computeVertexNormals();
+    const m = new THREE.MeshStandardMaterial({ name, map: TEX[name], roughness: name === 'glass' || name === 'solar' ? 0.25 : 0.9,
+      metalness: name === 'iron' ? 0.3 : 0 });
+    MAT[name] = m;
+    const mesh = new THREE.Mesh(g, m); mesh.name = name; mesh.castShadow = mesh.receiveShadow = true; group.add(mesh);
+  }
+  window.LANDMARK = group;   // export hook (see LANDMARKS.md)
+
+  // ------------------------------------------------------------------ viewer
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding; renderer.shadowMap.enabled = true; document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xc9dbe6);
+  scene.add(group);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ color: 0x7d8a5a, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = -1.25; ground.receiveShadow = true; scene.add(ground);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(70, 6.2), new THREE.MeshStandardMaterial({ color: 0x77736c, roughness: 1 }));
+  road.rotation.x = -Math.PI / 2; road.rotation.z = 19 * DEG; road.position.set(5, 0.0, -12.5); scene.add(road);
+  scene.add(new THREE.HemisphereLight(0xdfe9f3, 0x5b5040, 0.75));
+  const sun = new THREE.DirectionalLight(0xfff2dc, 1.15); sun.position.set(30, 40, -10); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30 }); scene.add(sun);
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  const VIEWS = {   // camera at Street View positions (local x, y, eye height)
+    road: [[1637.1, 249.0, 176.4], [1630.5, 236.5, 178.5]], ne: [[1656.4, 254.0, 174.0], [1630.5, 234, 179]],
+    west: [[1607.5, 243.5, 177.4], [1627, 233, 177.5]], south: [[1640, 212, 176], [1628, 232, 176.5]], air: [[1660, 205, 205], [1630, 233, 176]] };
+  function view(k) { const [c, tgt] = VIEWS[k]; camera.position.set(...T(c)); controls.target.set(...T(tgt)); controls.update(); }
+  document.querySelectorAll('#views button').forEach((b) => b.onclick = () => view(b.dataset.v));
+  view(new URLSearchParams(location.search).get('view') || 'road');
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+  (function loop() { renderer.render(scene, camera); requestAnimationFrame(loop); })();
+})();
+</script>
+</body>
+</html>

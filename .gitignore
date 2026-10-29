@@ -1,0 +1,14 @@
+# Large or machine-local folders: never in git.
+# Build folders (downloads, outputs, the track zips)
+builds/
+# Track briefs from the planner: your routes, private
+tracks/
+# Shared downloads: Street View panoramas (private), regional data
+cache/
+# Python environment (from pipeline/requirements.txt)
+pipeline/.venv/
+# CC0 textures and tree models (copied in, large)
+pipeline/data/
+__pycache__/
+*.pyc
+.DS_Store

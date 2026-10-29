@@ -1,0 +1,73 @@
+{
+ "_comment": "sRGB base colour of each land-cover layer (build_terrain.LAYERS) for ortho_base.base_colour_map: the mean base colour of the stock BeamNG Italy terrain material each layer used to map to (measured from that level when the pipeline still made BeamNG levels). Edit to suit another region.",
+ "grass": [
+  91.5,
+  89.8,
+  47.8
+ ],
+ "farmland": [
+  130.2,
+  116.2,
+  91.9
+ ],
+ "meadow": [
+  86.3,
+  97.5,
+  50.2
+ ],
+ "orchard": [
+  91.5,
+  89.8,
+  47.8
+ ],
+ "vineyard": [
+  130.2,
+  116.2,
+  91.9
+ ],
+ "scrub": [
+  105.7,
+  93.1,
+  68.0
+ ],
+ "forest": [
+  62.1,
+  65.8,
+  38.9
+ ],
+ "urban": [
+  91.5,
+  89.8,
+  47.8
+ ],
+ "industrial": [
+  121.6,
+  108.7,
+  94.8
+ ],
+ "rock": [
+  146.7,
+  136.8,
+  119.0
+ ],
+ "water": [
+  130.0,
+  117.7,
+  102.8
+ ],
+ "asphalt": [
+  95.2,
+  101.5,
+  63.1
+ ],
+ "gravel": [
+  130.0,
+  117.7,
+  102.8
+ ],
+ "asphalt_main": [
+  89.0,
+  97.9,
+  54.7
+ ]
+}
